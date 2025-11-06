@@ -138,10 +138,10 @@ ls -la *.csv
 ## Step 6: Run the System
 
 ### Make sure:
-1. ✅ Ollama is running (`ollama serve` in one terminal)
-2. ✅ A model is downloaded (`ollama list` shows your model)
-3. ✅ Python dependencies are installed
-4. ✅ You're in the project directory
+1. Ollama is running (`ollama serve` in one terminal)
+2. A model is downloaded (`ollama list` shows your model)
+3. Python dependencies are installed
+4. You're in the project directory
 
 ### Start the application:
 ```bash
