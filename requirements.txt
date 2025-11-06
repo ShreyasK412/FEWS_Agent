@@ -1,0 +1,14 @@
+langchain>=0.2.0
+langchain-core>=0.2.20
+langchain-community>=0.2.0
+langchain-ollama>=0.1.0
+langchain-chroma>=0.2.0
+chromadb>=0.4.22
+pypdf>=3.17.0
+pandas>=2.1.0
+python-dotenv>=1.0.0
+numpy>=1.26.0
+ollama>=0.1.0
+flask>=3.0.0
+flask-cors>=4.0.0
+

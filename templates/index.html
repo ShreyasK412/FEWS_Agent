@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ethiopia Food Security Analysis</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <h1>🌾 Ethiopia Food Security Analysis</h1>
+            <p class="subtitle">AI-powered analysis of food insecurity using local documents and price data</p>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Left Panel: Chat Interface -->
+            <div class="chat-panel">
+                <div class="chat-header">
+                    <h2>💬 Ask Questions</h2>
+                    <div class="status-indicator" id="statusIndicator">
+                        <span class="status-dot"></span>
+                        <span id="statusText">Ready</span>
+                    </div>
+                </div>
+                
+                <div class="chat-messages" id="chatMessages">
+                    <div class="message system-message">
+                        <p>Welcome! I can help you analyze food insecurity in Ethiopia. Ask me about:</p>
+                        <ul>
+                            <li>Current food prices in different regions</li>
+                            <li>What actions can be taken to address the crisis</li>
+                            <li>Trends in commodity prices</li>
+                            <li>Regional food security situations</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="chat-input-container">
+                    <div class="input-wrapper">
+                        <input 
+                            type="text" 
+                            id="questionInput" 
+                            placeholder="Ask a question about food security in Ethiopia..."
+                            autocomplete="off"
+                        >
+                        <button id="sendButton" onclick="sendMessage()">
+                            <span>Send</span>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="quick-questions">
+                        <span class="quick-label">Quick questions:</span>
+                        <button class="quick-btn" onclick="askQuickQuestion('What are the current maize prices in Addis Ababa?')">Maize prices</button>
+                        <button class="quick-btn" onclick="askQuickQuestion('What can be done about the crisis in Ethiopia?')">Crisis response</button>
+                        <button class="quick-btn" onclick="askQuickQuestion('What regions have the highest food prices?')">Price by region</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Map -->
+            <div class="map-panel">
+                <div class="map-header">
+                    <h2>🗺️ Ethiopia Map</h2>
+                    <p>Click on regions to explore food security data</p>
+                </div>
+                <div id="map"></div>
+                <div class="map-info" id="mapInfo">
+                    <p>Select a region on the map or ask about specific locations in the chat</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sources Panel (collapsible) -->
+        <div class="sources-panel" id="sourcesPanel" style="display: none;">
+            <div class="sources-header" onclick="toggleSources()">
+                <h3>📚 Sources</h3>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="sources-content" id="sourcesContent"></div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Custom JS -->
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
+
