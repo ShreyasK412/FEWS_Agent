@@ -1,0 +1,130 @@
+region,zone,lz_code,livelihood_system,elevation_category,notes
+Tigray,Central Zone,LZ_T01,rainfed cropping,highland,Main cereal-based cropping system
+Tigray,Eastern Zone,LZ_T02,rainfed cropping,highland,Main cereal-based cropping system
+Tigray,North Western Zone,LZ_T03,rainfed cropping,highland,Main cereal-based cropping system
+Tigray,South Eastern Zone,LZ_T04,rainfed cropping,highland,Main cereal-based cropping system
+Tigray,South Western Zone,LZ_T05,rainfed cropping,highland,Main cereal-based cropping system
+Tigray,Western Zone,LZ_T06,rainfed cropping,highland,Main cereal-based cropping system
+Amhara,North Gondar,LZ_A01,rainfed cropping,highland,Main cereal-based cropping system
+Amhara,South Gondar,LZ_A02,rainfed cropping,highland,Main cereal-based cropping system
+Amhara,North Wollo,LZ_A03,rainfed cropping,highland,Main cereal-based cropping system
+Amhara,South Wollo,LZ_A04,rainfed cropping,highland,Main cereal-based cropping system
+Amhara,North Shewa,LZ_A05,rainfed cropping,highland,Main cereal-based cropping system
+Amhara,East Gojjam,LZ_A06,rainfed cropping,highland,Main cereal-based cropping system
+Amhara,West Gojjam,LZ_A07,rainfed cropping,highland,Main cereal-based cropping system
+Amhara,Awi,LZ_A08,rainfed cropping,highland,Main cereal-based cropping system
+Amhara,Oromia Special Zone,LZ_A09,rainfed cropping,highland,Main cereal-based cropping system
+Oromia,West Hararge,LZ_O01,rainfed cropping,highland,Main cereal-based cropping system
+Oromia,East Hararge,LZ_O02,agropastoral,midland,Mixed crop-livestock system
+Oromia,Arsi,LZ_O03,rainfed cropping,highland,Main cereal-based cropping system
+Oromia,Bale,LZ_O04,agropastoral,midland,Mixed crop-livestock system
+Oromia,Borena,LZ_O05,pastoral,lowland,Livestock-dominant pastoral system
+Oromia,West Guji,LZ_O06,agropastoral,midland,Mixed crop-livestock system
+Oromia,East Guji,LZ_O07,agropastoral,midland,Mixed crop-livestock system
+Somali,all,LZ_SO1,pastoral,lowland,Livestock-dominant pastoral system
+Afar,Zone 1,LZ_AF1,pastoral,lowland,Livestock-dominant pastoral system
+Afar,Zone 2,LZ_AF2,agropastoral,lowland,Mixed crop-livestock system
+Afar,Zone 3,LZ_AF3,pastoral,lowland,Livestock-dominant pastoral system
+Afar,Zone 4,LZ_AF4,agropastoral,lowland,Mixed crop-livestock system
+Afar,Zone 5,LZ_AF5,pastoral,lowland,Livestock-dominant pastoral system
+SNNPR,Wolayita,LZ_S01,mixed enset,midland,Enset-root crop mixed system
+SNNPR,Gamo Gofa,LZ_S02,mixed enset,midland,Enset-root crop mixed system
+SNNPR,Gedeo,LZ_S03,mixed enset,midland,Enset-root crop mixed system
+SNNPR,Sidama,LZ_S04,mixed enset,midland,Enset-root crop mixed system
+SNNPR,Hadiya,LZ_S05,mixed enset,midland,Enset-root crop mixed system
+SNNPR,Kembata Tembaro,LZ_S06,mixed enset,midland,Enset-root crop mixed system
+SNNPR,South Omo,LZ_S07,pastoral,lowland,Livestock-dominant pastoral system
+SNNPR,Burji Special,LZ_S08,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Gurage,LZ_S09,mixed enset,midland,Enset-root crop mixed system
+SNNPR,Silte,LZ_S10,mixed enset,midland,Enset-root crop mixed system
+SNNPR,Bench Maji,LZ_S11,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Sheka,LZ_S12,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Keffa,LZ_S13,agropastoral,midland,Mixed crop-livestock system
+SNNPR,West Omo,LZ_S14,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Dawro,LZ_S15,mixed enset,midland,Enset-root crop mixed system
+SNNPR,Konta Special,LZ_S16,mixed enset,midland,Enset-root crop mixed system
+SNNPR,Yem Special,LZ_S17,mixed enset,midland,Enset-root crop mixed system
+SNNPR,South West Shewa,LZ_S18,agropastoral,midland,Mixed crop-livestock system
+SNNPR,North Shewa,LZ_S19,agropastoral,midland,Mixed crop-livestock system
+SNNPR,East Shewa,LZ_S20,agropastoral,midland,Mixed crop-livestock system
+SNNPR,West Shewa,LZ_S21,agropastoral,midland,Mixed crop-livestock system
+SNNPR,South Shewa,LZ_S22,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Central Shewa,LZ_S23,agropastoral,midland,Mixed crop-livestock system
+SNNPR,North Omo,LZ_S24,agropastoral,midland,Mixed crop-livestock system
+SNNPR,South Omo,LZ_S25,pastoral,lowland,Livestock-dominant pastoral system
+SNNPR,Bench Sheko,LZ_S26,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Sheka,LZ_S27,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Keffa,LZ_S28,agropastoral,midland,Mixed crop-livestock system
+SNNPR,West Omo,LZ_S29,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Dawro,LZ_S30,mixed enset,midland,Enset-root crop mixed system
+SNNPR,Konta Special,LZ_S31,mixed enset,midland,Enset-root crop mixed system
+SNNPR,Yem Special,LZ_S32,mixed enset,midland,Enset-root crop mixed system
+SNNPR,South West Shewa,LZ_S33,agropastoral,midland,Mixed crop-livestock system
+SNNPR,North Shewa,LZ_S34,agropastoral,midland,Mixed crop-livestock system
+SNNPR,East Shewa,LZ_S35,agropastoral,midland,Mixed crop-livestock system
+SNNPR,West Shewa,LZ_S36,agropastoral,midland,Mixed crop-livestock system
+SNNPR,South Shewa,LZ_S37,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Central Shewa,LZ_S38,agropastoral,midland,Mixed crop-livestock system
+SNNPR,North Omo,LZ_S39,agropastoral,midland,Mixed crop-livestock system
+SNNPR,South Omo,LZ_S40,pastoral,lowland,Livestock-dominant pastoral system
+SNNPR,Bench Sheko,LZ_S41,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Sheka,LZ_S42,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Keffa,LZ_S43,agropastoral,midland,Mixed crop-livestock system
+SNNPR,West Omo,LZ_S44,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Dawro,LZ_S45,mixed enset,midland,Enset-root crop mixed system
+SNNPR,Konta Special,LZ_S46,mixed enset,midland,Enset-root crop mixed system
+SNNPR,Yem Special,LZ_S47,mixed enset,midland,Enset-root crop mixed system
+SNNPR,South West Shewa,LZ_S48,agropastoral,midland,Mixed crop-livestock system
+SNNPR,North Shewa,LZ_S49,agropastoral,midland,Mixed crop-livestock system
+SNNPR,East Shewa,LZ_S50,agropastoral,midland,Mixed crop-livestock system
+SNNPR,West Shewa,LZ_S51,agropastoral,midland,Mixed crop-livestock system
+SNNPR,South Shewa,LZ_S52,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Central Shewa,LZ_S53,agropastoral,midland,Mixed crop-livestock system
+SNNPR,North Omo,LZ_S54,agropastoral,midland,Mixed crop-livestock system
+SNNPR,South Omo,LZ_S55,pastoral,lowland,Livestock-dominant pastoral system
+SNNPR,Bench Sheko,LZ_S56,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Sheka,LZ_S57,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Keffa,LZ_S58,agropastoral,midland,Mixed crop-livestock system
+SNNPR,West Omo,LZ_S59,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Dawro,LZ_S60,mixed enset,midland,Enset-root crop mixed system
+SNNPR,Konta Special,LZ_S61,mixed enset,midland,Enset-root crop mixed system
+SNNPR,Yem Special,LZ_S62,mixed enset,midland,Enset-root crop mixed system
+SNNPR,South West Shewa,LZ_S63,agropastoral,midland,Mixed crop-livestock system
+SNNPR,North Shewa,LZ_S64,agropastoral,midland,Mixed crop-livestock system
+SNNPR,East Shewa,LZ_S65,agropastoral,midland,Mixed crop-livestock system
+SNNPR,West Shewa,LZ_S66,agropastoral,midland,Mixed crop-livestock system
+SNNPR,South Shewa,LZ_S67,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Central Shewa,LZ_S68,agropastoral,midland,Mixed crop-livestock system
+SNNPR,North Omo,LZ_S69,agropastoral,midland,Mixed crop-livestock system
+SNNPR,South Omo,LZ_S70,pastoral,lowland,Livestock-dominant pastoral system
+SNNPR,Bench Sheko,LZ_S71,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Sheka,LZ_S72,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Keffa,LZ_S73,agropastoral,midland,Mixed crop-livestock system
+SNNPR,West Omo,LZ_S74,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Dawro,LZ_S75,mixed enset,midland,Enset-root crop mixed system
+SNNPR,Konta Special,LZ_S76,mixed enset,midland,Enset-root crop mixed system
+SNNPR,Yem Special,LZ_S77,mixed enset,midland,Enset-root crop mixed system
+SNNPR,South West Shewa,LZ_S78,agropastoral,midland,Mixed crop-livestock system
+SNNPR,North Shewa,LZ_S79,agropastoral,midland,Mixed crop-livestock system
+SNNPR,East Shewa,LZ_S80,agropastoral,midland,Mixed crop-livestock system
+SNNPR,West Shewa,LZ_S81,agropastoral,midland,Mixed crop-livestock system
+SNNPR,South Shewa,LZ_S82,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Central Shewa,LZ_S83,agropastoral,midland,Mixed crop-livestock system
+SNNPR,North Omo,LZ_S84,agropastoral,midland,Mixed crop-livestock system
+SNNPR,South Omo,LZ_S85,pastoral,lowland,Livestock-dominant pastoral system
+SNNPR,Bench Sheko,LZ_S86,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Sheka,LZ_S87,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Keffa,LZ_S88,agropastoral,midland,Mixed crop-livestock system
+SNNPR,West Omo,LZ_S89,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Dawro,LZ_S90,mixed enset,midland,Enset-root crop mixed system
+SNNPR,Konta Special,LZ_S91,mixed enset,midland,Enset-root crop mixed system
+SNNPR,Yem Special,LZ_S92,mixed enset,midland,Enset-root crop mixed system
+SNNPR,South West Shewa,LZ_S93,agropastoral,midland,Mixed crop-livestock system
+SNNPR,North Shewa,LZ_S94,agropastoral,midland,Mixed crop-livestock system
+SNNPR,East Shewa,LZ_S95,agropastoral,midland,Mixed crop-livestock system
+SNNPR,West Shewa,LZ_S96,agropastoral,midland,Mixed crop-livestock system
+SNNPR,South Shewa,LZ_S97,agropastoral,midland,Mixed crop-livestock system
+SNNPR,Central Shewa,LZ_S98,agropastoral,midland,Mixed crop-livestock system
+SNNPR,North Omo,LZ_S99,agropastoral,midland,Mixed crop-livestock system
+SNNPR,South Omo,LZ_S100,pastoral,lowland,Livestock-dominant pastoral system
+

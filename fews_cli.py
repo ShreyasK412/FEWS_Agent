@@ -90,6 +90,20 @@ def main():
             
             if assessment is None:
                 print(f"❌ Region '{region}' not found in IPC data.")
+                # Suggest similar regions
+                all_regions = system.ipc_parser.identify_at_risk_regions(min_phase=1, include_projected=True, include_deteriorating=True)
+                region_lower = region.lower()
+                suggestions = []
+                for r in all_regions[:100]:  # Check first 100
+                    if region_lower in r.region.lower() or r.region.lower() in region_lower:
+                        suggestions.append(r.region)
+                    elif any(word in r.region.lower() for word in region_lower.split() if len(word) > 3):
+                        suggestions.append(r.region)
+                
+                if suggestions:
+                    print(f"\n💡 Did you mean one of these?")
+                    for sug in suggestions[:5]:
+                        print(f"   - {sug}")
                 continue
             
             if not assessment.is_at_risk:
@@ -126,6 +140,20 @@ def main():
             
             if assessment is None:
                 print(f"❌ Region '{region}' not found in IPC data.")
+                # Suggest similar regions
+                all_regions = system.ipc_parser.identify_at_risk_regions(min_phase=1, include_projected=True, include_deteriorating=True)
+                region_lower = region.lower()
+                suggestions = []
+                for r in all_regions[:100]:  # Check first 100
+                    if region_lower in r.region.lower() or r.region.lower() in region_lower:
+                        suggestions.append(r.region)
+                    elif any(word in r.region.lower() for word in region_lower.split() if len(word) > 3):
+                        suggestions.append(r.region)
+                
+                if suggestions:
+                    print(f"\n💡 Did you mean one of these?")
+                    for sug in suggestions[:5]:
+                        print(f"   - {sug}")
                 continue
             
             # Optionally get drivers first

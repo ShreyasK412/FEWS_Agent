@@ -204,12 +204,39 @@ class IPCParser:
         return assessments
     
     def get_region_assessment(self, region: str) -> Optional[RegionRiskAssessment]:
-        """Get risk assessment for a specific region."""
+        """Get risk assessment for a specific region with fuzzy matching."""
+        region_lower = region.lower().strip()
+        
+        # First try exact match (case-insensitive)
         assessments = self.identify_at_risk_regions()
         for assessment in assessments:
-            if assessment.region.lower() == region.lower():
+            if assessment.region.lower() == region_lower:
                 return assessment
-        return None
+        
+        # Try partial match (contains)
+        for assessment in assessments:
+            if region_lower in assessment.region.lower() or assessment.region.lower() in region_lower:
+                return assessment
+        
+        # Try fuzzy match (similarity)
+        # Simple similarity: check if most words match
+        region_words = set(region_lower.split())
+        best_match = None
+        best_score = 0
+        
+        for assessment in assessments:
+            assessment_words = set(assessment.region.lower().split())
+            if region_words and assessment_words:
+                # Calculate Jaccard similarity (intersection over union)
+                intersection = len(region_words & assessment_words)
+                union = len(region_words | assessment_words)
+                if union > 0:
+                    score = intersection / union
+                    if score > best_score and score >= 0.5:  # At least 50% similarity
+                        best_score = score
+                        best_match = assessment
+        
+        return best_match
 
 
 if __name__ == "__main__":

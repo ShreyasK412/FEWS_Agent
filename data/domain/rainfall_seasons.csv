@@ -1,0 +1,15 @@
+region,zone,dominant_season,secondary_season,season_months,notes
+Tigray,all,Kiremt,Belg,Jun-Sep,Main cropping season June-September
+Amhara,all,Kiremt,Belg,Jun-Sep,Main cropping season June-September
+Oromia,highland zones,Kiremt,Belg,Jun-Sep,Main cropping season June-September
+Oromia,midland zones,Kiremt,Belg,Jun-Sep,Main cropping season June-September
+Oromia,Borena,Gu/Genna,Deyr/Hageya,Mar-May;Oct-Dec,Pastoral seasons
+Oromia,West Guji,Gu/Genna,Deyr/Hageya,Mar-May;Oct-Dec,Pastoral seasons
+Oromia,East Guji,Gu/Genna,Deyr/Hageya,Mar-May;Oct-Dec,Pastoral seasons
+Somali,all,Gu/Genna,Deyr/Hageya,Mar-May;Oct-Dec,Pastoral seasons
+Afar,all,Belg pulses,none,Mar-May,Erratic rainfall pulses
+SNNPR,highland zones,Kiremt,Belg,Jun-Sep,Main cropping season June-September
+SNNPR,midland zones,Kiremt,Belg,Jun-Sep,Main cropping season June-September
+SNNPR,South Omo,Gu/Genna,Deyr/Hageya,Mar-May;Oct-Dec,Pastoral seasons
+SNNPR,lowland zones,Gu/Genna,Deyr/Hageya,Mar-May;Oct-Dec,Pastoral seasons
+

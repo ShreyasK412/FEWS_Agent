@@ -1,0 +1,162 @@
+{
+  "drought": {
+    "keywords": [
+      "below-average rainfall",
+      "rainfall deficit",
+      "dry conditions",
+      "crop moisture stress",
+      "drought",
+      "failed rainfall",
+      "poor rainfall",
+      "rainfall failure",
+      "insufficient rainfall",
+      "rainfall anomalies",
+      "seasonal failure",
+      "harvest failure",
+      "crop failure",
+      "water stress",
+      "dry spell"
+    ],
+    "category": "climate",
+    "description": "Rainfall deficits leading to crop failure, water stress, or livestock feed shortages"
+  },
+  "conflict": {
+    "keywords": [
+      "conflict",
+      "insecurity",
+      "clashes",
+      "shooting",
+      "attacks",
+      "militia",
+      "armed groups",
+      "violence",
+      "fighting",
+      "hostilities",
+      "armed conflict",
+      "security incidents",
+      "military operations"
+    ],
+    "category": "security",
+    "description": "Armed conflict, insecurity, or violence affecting access and livelihoods"
+  },
+  "price_increase": {
+    "keywords": [
+      "high food prices",
+      "market inflation",
+      "price spikes",
+      "price increases",
+      "rising prices",
+      "expensive",
+      "unaffordable",
+      "price volatility",
+      "market disruption",
+      "supply chain disruption",
+      "trade disruption"
+    ],
+    "category": "economic",
+    "description": "Rising food prices reducing purchasing power and food access"
+  },
+  "displacement": {
+    "keywords": [
+      "IDPs",
+      "internally displaced",
+      "population movement",
+      "displaced households",
+      "displacement",
+      "forced migration",
+      "fleeing",
+      "evacuation",
+      "uprooted",
+      "migration",
+      "refugees"
+    ],
+    "category": "social",
+    "description": "Population displacement disrupting livelihoods and access to resources"
+  },
+  "livestock_mortality": {
+    "keywords": [
+      "disease outbreak",
+      "poor body conditions",
+      "animal deaths",
+      "livestock mortality",
+      "livestock disease",
+      "animal disease",
+      "livestock loss",
+      "cattle deaths",
+      "goat deaths",
+      "sheep deaths",
+      "camel deaths",
+      "veterinary",
+      "animal health"
+    ],
+    "category": "livestock",
+    "description": "Livestock disease, mortality, or poor body conditions affecting pastoral livelihoods"
+  },
+  "flooding": {
+    "keywords": [
+      "flooding",
+      "floods",
+      "flash floods",
+      "river overflow",
+      "waterlogging",
+      "excessive rainfall",
+      "heavy rains",
+      "inundation"
+    ],
+    "category": "climate",
+    "description": "Excessive rainfall or flooding causing crop damage and displacement"
+  },
+  "crop_pests": {
+    "keywords": [
+      "pest infestation",
+      "locusts",
+      "armyworm",
+      "crop pests",
+      "insect damage",
+      "disease outbreak",
+      "plant disease"
+    ],
+    "category": "agricultural",
+    "description": "Pest or disease outbreaks affecting crop production"
+  },
+  "market_disruption": {
+    "keywords": [
+      "market closure",
+      "trade disruption",
+      "supply chain disruption",
+      "transport disruption",
+      "road closure",
+      "market access constraints",
+      "trade restrictions"
+    ],
+    "category": "economic",
+    "description": "Market or trade disruptions limiting food availability and access"
+  },
+  "humanitarian_access_constraints": {
+    "keywords": [
+      "humanitarian access",
+      "access constraints",
+      "aid delivery",
+      "humanitarian assistance",
+      "aid restrictions",
+      "delivery constraints",
+      "access denied"
+    ],
+    "category": "logistics",
+    "description": "Constraints preventing humanitarian assistance from reaching affected populations"
+  },
+  "macroeconomic_shocks": {
+    "keywords": [
+      "economic crisis",
+      "inflation",
+      "currency devaluation",
+      "economic downturn",
+      "recession",
+      "economic shock",
+      "financial crisis"
+    ],
+    "category": "economic",
+    "description": "Macroeconomic shocks affecting purchasing power and economic stability"
+  }
+}
+

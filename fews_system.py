@@ -17,9 +17,8 @@ from langchain.prompts import PromptTemplate
 from langchain_core.documents import Document
 from pypdf import PdfReader
 
-from .ipc_parser import IPCParser, RegionRiskAssessment
-from .document_processor import DocumentProcessor
-from .domain_knowledge import DomainKnowledge
+from ipc_parser import IPCParser, RegionRiskAssessment
+from document_processor import DocumentProcessor
 
 
 # Setup logging for missing information
@@ -81,7 +80,6 @@ class FEWSSystem:
         # Initialize components
         self.ipc_parser = IPCParser(str(self.ipc_file))
         self.doc_processor = DocumentProcessor()
-        self.domain_knowledge = DomainKnowledge()
         
         # Vector stores
         self.reports_vectorstore: Optional[Chroma] = None
@@ -347,20 +345,8 @@ class FEWSSystem:
                     "ipc_phase": None
                 }
         
-        # Get structured domain knowledge
-        geographic_parts = assessment.geographic_full_name.split(',')
-        region_name = geographic_parts[0].strip() if geographic_parts else region
-        zone_name = geographic_parts[1].strip() if len(geographic_parts) > 1 else None
-        
-        # Get livelihood system from domain knowledge
-        livelihood_info = self.domain_knowledge.get_livelihood_system(region_name, zone_name)
-        livelihood_system = livelihood_info.livelihood_system if livelihood_info else None
-        
-        # Get rainfall season from domain knowledge
-        rainfall_info = self.domain_knowledge.get_rainfall_season(region_name, zone_name)
-        dominant_season = rainfall_info.dominant_season if rainfall_info else None
-        
         # Build expanded query with region context
+        geographic_parts = assessment.geographic_full_name.split(',')
         region_variations = [region]
         for part in geographic_parts:
             part = part.strip()
@@ -433,22 +419,9 @@ class FEWSSystem:
                 for doc in docs
             ])
             
-            # Detect shocks using domain knowledge
-            detected_shocks = self.domain_knowledge.detect_shocks(context)
-            shock_types = [shock[0] for shock in detected_shocks[:5]]  # Top 5 shocks
-            
-            # Build domain knowledge context for prompt
-            domain_context = ""
-            if livelihood_info:
-                domain_context += f"\nLIVELIHOOD SYSTEM (from domain knowledge): {livelihood_info.livelihood_system} ({livelihood_info.elevation_category})\n"
-            if rainfall_info:
-                domain_context += f"RAINFALL SEASON (from domain knowledge): {rainfall_info.dominant_season} ({rainfall_info.season_months})\n"
-            if shock_types:
-                domain_context += f"DETECTED SHOCKS (from domain knowledge): {', '.join(shock_types)}\n"
-            
             # Use LLM to extract drivers with new IPC-aligned prompt
             prompt = PromptTemplate(
-                input_variables=["region", "ipc_phase", "context", "domain_context"],
+                input_variables=["region", "ipc_phase", "context"],
                 template="""You are a senior Integrated Food Security Phase Classification (IPC) analyst. 
 Your task is to explain WHY {region} is experiencing IPC Phase {ipc_phase} food insecurity.
 
@@ -456,63 +429,15 @@ Use ONLY the information inside the situation report, but apply IPC-compatible
 regional and livelihood inference when the woreda is not directly mentioned.
 
 ===========================================================
-LIVELIHOOD MAPPING RULE (MANDATORY)
-===========================================================
-When inferring livelihood systems, apply the following rules:
-
-- Tigray highlands, Amhara highlands, Oromia highlands → 
-  RAINFED CROPPING livelihood system (cereal-based, mixed crop-livestock)
-- Somali Region, Afar, Borena, South Omo, most lowland arid areas → 
-  PASTORAL or AGROPASTORAL systems (livestock-dominant)
-- SNNPR mid-altitude zones → 
-  MIXED or ROOT-CROP/ENSETE systems (crop-dominant with some livestock)
-- Rift Valley and dry mid-altitudes → 
-  AGROPASTORAL (crop + livestock, market-integrated)
-- If elevation is > 2,000m or clearly "highland" → 
-  treat as RAINFED CROPPING, not pastoral.
-
-Never assign a purely pastoral system to clearly highland cropping areas 
-like most of Tigray and North/Central Amhara.
-
-===========================================================
-RAINFALL SEASON MAPPING RULE (MANDATORY)
-===========================================================
-When discussing rainfall seasons, apply the following rules:
-
-- Never assign rainfall seasons (deyr/hageya, gu/genna, kiremt) unless:
-  (a) it is explicitly stated in the context, OR
-  (b) the season is typical for the region's geography.
-
-- Regional rainfall seasons:
-  • Tigray, Amhara, Oromia Highlands: KIREMT (June–September) is the dominant 
-    cropping season. Do NOT refer to deyr/hageya or gu/genna for these highland areas.
-  • Somali Region, southern Oromia, lowland pastoral/agropastoral zones:
-    • GU/GENNA: March–May
-    • DEYR/HAGEYA: October–December
-  • Afar: Kiremt is marginal; main shocks relate to erratic "Belg" pulses and 
-    dry-season water stress.
-
-- If a region's rainfall season is unclear, use neutral language:
-  "below-average rainfall," "rainfall anomalies," "seasonal failure," WITHOUT 
-  naming a specific season.
-
-===========================================================
 MANDATORY ANALYSIS FRAMEWORK (MUST FOLLOW THIS ORDER)
 ===========================================================
 
 1. LIVELIHOOD SYSTEM IDENTIFICATION
-   - Identify the likely livelihood system (pastoral, agropastoral, cropping, mixed).
-   - Justify your choice using regional or zonal patterns from the context.
+   - Identify the likely livelihood system (pastoral, agropastoral, cropping)
+     using regional patterns, adjacent zones, or contextual clues. 
    - Explain why this livelihood system matters for food access.
 
-2. RAINFALL SEASON CONTEXT
-   - When discussing rainfall shocks, apply the rainfall season mapping rules above.
-   - For highland cropping areas (Tigray, Amhara, Oromia highlands), refer to kiremt 
-     season if discussing seasonal rainfall.
-   - For southern/southeastern pastoral areas, refer to deyr/hageya or gu/genna as appropriate.
-   - If uncertain, use neutral language without naming specific seasons.
-
-3. SHOCK IDENTIFICATION (WHAT HAPPENED?)
+2. SHOCK IDENTIFICATION (WHAT HAPPENED?)
    Extract all relevant shocks from the context, including:
    - rainfall anomalies / drought / flooding
    - conflict and insecurity
@@ -523,30 +448,30 @@ MANDATORY ANALYSIS FRAMEWORK (MUST FOLLOW THIS ORDER)
    - macroeconomic shocks
    - humanitarian access constraints
 
-4. LIVELIHOOD IMPACT (HOW SHOCKS AFFECT FOOD/INCOME)
+3. LIVELIHOOD IMPACT (HOW SHOCKS AFFECT FOOD/INCOME)
    For each shock, explain:
-   - impact on agricultural production (crops, harvest timing, yields)
+   - impact on agricultural production
    - impact on livestock body condition, births, milk, sales
    - impact on labor markets and wages
    - impact on market access, transport, supply chains
    - changes in terms of trade and purchasing power
 
-5. FOOD ACCESS & CONSUMPTION GAPS
+4. FOOD ACCESS & CONSUMPTION GAPS
    - Describe how the above impacts reduce the ability to access food.
    - Identify reduced meal frequency, reduced dietary diversity, reliance on
      negative coping, distress sales, early depletion of stocks, etc.
 
-6. NUTRITIONAL AND HEALTH OUTCOMES
+5. NUTRITIONAL AND HEALTH OUTCOMES
    - Identify references to increasing GAM/SAM, disease outbreaks, water stress,
      or other factors increasing malnutrition.
 
-7. IPC PHASE ALIGNMENT
+6. IPC PHASE ALIGNMENT
    - Explicitly link the above evidence to IPC Phase {ipc_phase} outcomes:
      Phase 3 → Crisis level: consumption gaps, livelihood protection deficits
      Phase 4 → Emergency: extreme food deficits, acute malnutrition, asset collapse
      Phase 5 → Catastrophe/Famine: near-complete food consumption failure
 
-8. LIMITATIONS
+7. LIMITATIONS
    - If the context does not name {region}, clearly state:
      "{region} is not directly mentioned; analysis is based on regional livelihood
       profiles and contextual patterns in the report."
@@ -555,16 +480,13 @@ MANDATORY ANALYSIS FRAMEWORK (MUST FOLLOW THIS ORDER)
 FORMAT YOUR OUTPUT AS:
 A. Overview
 B. Livelihood System
-C. Shocks (with correct seasonal context)
+C. Shocks
 D. Livelihood Impacts
 E. Food Access and Consumption
 F. Nutrition & Health
 G. IPC Alignment
 H. Limitations
 ===========================================================
-
-DOMAIN KNOWLEDGE CONTEXT:
-{domain_context}
 
 CONTEXT FROM SITUATION REPORTS:
 {context}
@@ -577,53 +499,30 @@ Produce a detailed, structured IPC-style analytical narrative.
             explanation = chain.invoke({
                 "region": region,
                 "ipc_phase": assessment.current_phase,
-                "domain_context": domain_context,
                 "context": context
             })
             
-            # Extract drivers using domain knowledge shock detection
-            explanation_lower = explanation.lower()  # Define early for use in data quality check
+            # Extract drivers (improved extraction based on structured output)
             drivers = []
-            detected_shocks_full = self.domain_knowledge.detect_shocks(explanation)
+            explanation_lower = explanation.lower()
             
-            # Map detected shocks to driver names
-            shock_to_driver = {
-                "drought": "Drought/Rainfall deficit",
-                "conflict": "Conflict and insecurity",
-                "displacement": "Displacement",
-                "price_increase": "Price increases",
-                "crop_pests": "Crop failure",
-                "livestock_mortality": "Livestock losses",
-                "market_disruption": "Market disruption",
-                "humanitarian_access_constraints": "Humanitarian access constraints",
-                "flooding": "Flooding",
-                "macroeconomic_shocks": "Macroeconomic shocks"
-            }
-            
-            for shock_type, confidence in detected_shocks_full[:8]:  # Top 8 shocks
-                if shock_type in shock_to_driver:
-                    driver_name = shock_to_driver[shock_type]
-                    if driver_name not in drivers:
-                        drivers.append(driver_name)
-            
-            # Fallback: if no shocks detected, use keyword matching
-            if not drivers:
-                if "conflict" in explanation_lower or "violence" in explanation_lower or "insecurity" in explanation_lower:
-                    drivers.append("Conflict and insecurity")
-                if "drought" in explanation_lower or "rainfall" in explanation_lower or "dry" in explanation_lower or "deficit" in explanation_lower:
-                    drivers.append("Drought/Rainfall deficit")
-                if "price" in explanation_lower or "cost" in explanation_lower or "market" in explanation_lower:
-                    drivers.append("Price increases")
-                if "displacement" in explanation_lower or "displaced" in explanation_lower or "idp" in explanation_lower:
-                    drivers.append("Displacement")
-                if "crop" in explanation_lower or "harvest" in explanation_lower or "agricultural" in explanation_lower:
-                    drivers.append("Crop failure")
-                if "livestock" in explanation_lower or "pastoral" in explanation_lower:
-                    drivers.append("Livestock losses")
-                if "flood" in explanation_lower or "flooding" in explanation_lower:
-                    drivers.append("Flooding")
-                if "access" in explanation_lower and ("humanitarian" in explanation_lower or "constraint" in explanation_lower):
-                    drivers.append("Humanitarian access constraints")
+            # Map to IPC driver categories
+            if "conflict" in explanation_lower or "violence" in explanation_lower or "insecurity" in explanation_lower:
+                drivers.append("Conflict and insecurity")
+            if "drought" in explanation_lower or "rainfall" in explanation_lower or "dry" in explanation_lower or "deficit" in explanation_lower:
+                drivers.append("Drought/Rainfall deficit")
+            if "price" in explanation_lower or "cost" in explanation_lower or "market" in explanation_lower:
+                drivers.append("Market disruptions and price increases")
+            if "displacement" in explanation_lower or "displaced" in explanation_lower or "idp" in explanation_lower:
+                drivers.append("Displacement")
+            if "crop" in explanation_lower or "harvest" in explanation_lower or "agricultural" in explanation_lower:
+                drivers.append("Crop failure")
+            if "livestock" in explanation_lower or "pastoral" in explanation_lower:
+                drivers.append("Livestock losses")
+            if "flood" in explanation_lower or "flooding" in explanation_lower:
+                drivers.append("Flooding")
+            if "access" in explanation_lower and ("humanitarian" in explanation_lower or "constraint" in explanation_lower):
+                drivers.append("Humanitarian access constraints")
             
             # Check if explanation indicates insufficient data
             data_quality = "sufficient"
@@ -804,42 +703,10 @@ Produce a detailed, structured IPC-style analytical narrative.
                 for doc in docs
             ])
             
-            # Get structured intervention mappings from domain knowledge
-            intervention_mappings = {}
-            for driver in drivers:
-                # Map driver name back to shock type
-                driver_to_shock = {
-                    "Drought/Rainfall deficit": "drought",
-                    "Conflict and insecurity": "conflict",
-                    "Displacement": "displacement",
-                    "Price increases": "price_increase",
-                    "Crop failure": "crop_pests",
-                    "Livestock losses": "livestock_mortality",
-                    "Market disruption": "market_disruption",
-                    "Humanitarian access constraints": "humanitarian_access_constraints",
-                    "Flooding": "flooding",
-                    "Macroeconomic shocks": "macroeconomic_shocks"
-                }
-                shock_type = driver_to_shock.get(driver)
-                if shock_type:
-                    interventions = self.domain_knowledge.get_interventions_for_driver(shock_type)
-                    if interventions:
-                        intervention_mappings[driver] = interventions
-            
-            # Build intervention context
-            intervention_context = ""
-            if intervention_mappings:
-                intervention_context = "\nSTRUCTURED INTERVENTION MAPPINGS (from domain knowledge):\n"
-                for driver, interventions in intervention_mappings.items():
-                    intervention_context += f"\n{driver}:\n"
-                    for category, items in interventions.items():
-                        if category != "references" and items:
-                            intervention_context += f"  {category}: {', '.join(items[:3])}\n"
-            
             # Use LLM to generate recommendations with new driver-linked prompt
             ipc_phase_desc = 'Emergency' if ipc_phase >= 4 else 'Crisis' if ipc_phase >= 3 else 'Stressed'
             prompt = PromptTemplate(
-                input_variables=["region", "ipc_phase", "ipc_phase_desc", "drivers", "context", "intervention_context"],
+                input_variables=["region", "ipc_phase", "ipc_phase_desc", "drivers", "context"],
                 template="""You are a humanitarian emergency response advisor. 
 Your job is to recommend interventions for {region} experiencing IPC Phase {ipc_phase}.
 
@@ -850,73 +717,45 @@ MANDATORY STRUCTURE
 ===========================================================
 
 1. LINK INTERVENTIONS TO DRIVERS
-   For each major driver in DRIVERS, map at least one relevant intervention or 
-   package of interventions, drawing on:
-   - Sphere Minimum Standards (Food Security & Nutrition, WASH)
+   For each driver listed, map the appropriate intervention category using:
+   - Sphere Minimum Standards
    - Cash & Voucher (CVA) guidance (CALP, UNHCR/WFP)
-   - WFP Essential Needs, GFD, and EFSA guidelines
+   - WFP Essential Needs, GFD, and EFSA guidance
    - Nutrition in Emergencies protocols (CMAM, IYCF-E, SAM/MAM treatment)
-   - Livestock Emergency Guidelines and Standards (LEGS)
-   - FAO agricultural and livelihood support
-   - Food Security & Nutrition Cluster (FSC/GNC) guidance
-   - USAID/BHA emergency and early recovery guidelines
+   - Livestock Emergency Guidelines (LEGS)
+   - FAO agricultural support
+   - Cluster (FSC/GNC) guidance
+   - USAID/BHA emergency guidelines
 
 2. IPC PHASE–SPECIFIC PRIORITIZATION
    For IPC Phase 3 (Crisis):
-     - Prioritize livelihood protection, market support, early cash,
-       agricultural inputs, and targeted food assistance.
+     - Prioritize livelihood protection, market support, early cash, agricultural inputs.
    For IPC Phase 4 (Emergency):
-     - Prioritize life-saving food assistance, SAM treatment, water trucking,
-       survival livestock support, and high-intensity CVA where markets function.
+     - Prioritize lifesaving food assistance, SAM treatment, water trucking, survival livestock support.
    For IPC Phase 5 (Catastrophe/Famine):
-     - Prioritize blanket food distributions, therapeutic feeding, emergency water,
-       and any other life-saving measures, with less emphasis on medium-term recovery.
+     - Prioritize blanket food distributions, therapeutic feeding, emergency water, any life-saving measures.
 
-3. MANDATORY INTERVENTION COVERAGE
-   You MUST consider and, where relevant, recommend interventions in each of the
-   following domains (even if briefly):
-
-   - FOOD:
-     - General food distribution (GFD), vouchers, or cash-based transfers aligned
-       with essential needs.
-   - NUTRITION:
-     - CMAM programming, SAM/MAM treatment, blanket supplementary feeding where needed,
-       IYCF-E support for infants and young children.
-   - LIVESTOCK:
-     - LEGS-consistent support: emergency feed, water for livestock, veterinary care,
-       strategic destocking, restocking where appropriate.
-   - AGRICULTURE & LIVELIHOODS:
-     - Seeds, tools, support for next season planting, small-scale irrigation, soil
-       and water conservation, support to petty trade and small businesses.
-   - CASH & MARKETS:
-     - CVA (multi-purpose cash, vouchers), trader credit where appropriate, support
-       to restore supply chains and stabilize markets.
-   - WASH:
-     - Water trucking, rehabilitation of water points, water quality treatment,
-       hygiene promotion, WASH in nutrition and health facilities.
-   - HEALTH:
-     - Disease surveillance, ORS/zinc, malaria prevention where relevant, linkages
-       between nutrition and health services.
-   - PROTECTION & DISPLACEMENT:
-     - Safeguarding, GBV risk mitigation, safe access to assistance, attention to
-       displaced populations and host communities.
+3. INTERVENTION CATEGORIES
+   Break interventions into:
+   - Immediate life-saving actions
+   - Food assistance and nutrition support
+   - Livelihood protection (livestock feed/vet care, seed support)
+   - Cash/voucher programming (CVA)
+   - Market and price stabilization measures
+   - WASH essential interventions
+   - Protection and displacement considerations
+   - Medium-term resilience and recovery
 
 4. BEST PRACTICE REFERENCES
-   Where possible, explicitly reference the relevant guidance family, e.g.:
-   - "Sphere Handbook: Food Security & Nutrition standards"
-   - "Sphere WASH standards"
-   - "LEGS livestock emergency guidelines"
+   Cite the intervention literature by name or theme:
+   - "Sphere Handbook: Food Security & Nutrition"
    - "WFP Essential Needs Guidelines"
+   - "LEGS Livestock Standards"
    - "CMAM/WHO SAM treatment protocols"
-   - "CALP Cash & Voucher Assistance guidance"
-   - "Global Food Security Cluster coordination guidance"
+   - "CALP Cash & Voucher Assistance"
 
 5. LIMITATIONS
-   - If the literature does not directly address a very specific local constraint,
-     acknowledge this, but still provide the best-practice intervention package 
-     based on the closest relevant guidance.
-   - You MUST NOT say "no recommendation is made" or leave a domain blank if 
-     there is general best-practice guidance in the literature.
+   - If the context lacks direct instructions for a driver, acknowledge the gap.
 
 ===========================================================
 FORMAT OUTPUT AS:
@@ -924,7 +763,7 @@ A. Summary
 B. Immediate Emergency Actions
 C. Food & Nutrition Interventions
 D. Cash and Market Support
-E. Livelihood Protection (incl. livestock and agriculture)
+E. Livelihood Protection
 F. WASH and Health Linkages
 G. Coordination Requirements
 H. Medium-term Recovery
@@ -935,15 +774,10 @@ REGION: {region}
 IPC PHASE: {ipc_phase} ({ipc_phase_desc})
 DRIVERS: {drivers}
 
-{intervention_context}
-
 INTERVENTION LITERATURE:
 {context}
 
-All recommendations MUST be evidence-based and explicitly tied to the literature,
-and must be clearly linked back to the drivers of food insecurity.
-Use the structured intervention mappings above as a guide, but ground all recommendations
-in the intervention literature provided.
+All recommendations MUST be evidence-based and tied to the literature.
 """
             )
             
@@ -953,8 +787,7 @@ in the intervention literature provided.
                 "ipc_phase": ipc_phase,
                 "ipc_phase_desc": ipc_phase_desc,
                 "drivers": drivers_str,
-                "context": context,
-                "intervention_context": intervention_context
+                "context": context
             })
             
             sources = [doc.metadata.get('source', 'Unknown') for doc in docs]

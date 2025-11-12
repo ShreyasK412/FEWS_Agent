@@ -1,0 +1,300 @@
+{
+  "drought": {
+    "immediate": [
+      "Water trucking",
+      "Emergency water point rehabilitation",
+      "Livestock feed distribution",
+      "Emergency food assistance (GFD)"
+    ],
+    "nutrition": [
+      "CMAM programming",
+      "SAM/MAM treatment",
+      "Blanket supplementary feeding",
+      "IYCF-E support"
+    ],
+    "livelihood": [
+      "Livestock feed support (LEGS)",
+      "Veterinary care",
+      "Strategic destocking",
+      "Seeds and tools for next season",
+      "Small-scale irrigation support"
+    ],
+    "cash_markets": [
+      "Multi-purpose cash (CVA)",
+      "Vouchers for water",
+      "Market support for feed"
+    ],
+    "wash": [
+      "Water trucking",
+      "Water point rehabilitation",
+      "Water quality treatment",
+      "Hygiene promotion"
+    ],
+    "references": [
+      "LEGS livestock emergency guidelines",
+      "Sphere WASH standards",
+      "WFP Essential Needs Guidelines"
+    ]
+  },
+  "conflict": {
+    "immediate": [
+      "Protection mainstreaming",
+      "Safe access to assistance",
+      "Targeted food assistance",
+      "Emergency shelter"
+    ],
+    "nutrition": [
+      "CMAM programming",
+      "SAM/MAM treatment",
+      "Blanket supplementary feeding",
+      "IYCF-E support"
+    ],
+    "livelihood": [
+      "Cash-based transfers where markets function",
+      "Livelihood protection",
+      "Support to petty trade"
+    ],
+    "cash_markets": [
+      "Multi-purpose cash (CVA)",
+      "Vouchers",
+      "Trader credit",
+      "Market support"
+    ],
+    "wash": [
+      "Water trucking",
+      "Water point rehabilitation",
+      "Hygiene kits",
+      "WASH in protection sites"
+    ],
+    "protection": [
+      "Safeguarding",
+      "GBV risk mitigation",
+      "Safe access protocols",
+      "IDP support"
+    ],
+    "references": [
+      "Sphere Protection standards",
+      "CALP Cash & Voucher Assistance",
+      "WFP Essential Needs Guidelines"
+    ]
+  },
+  "price_increase": {
+    "immediate": [
+      "Cash-based transfers",
+      "Vouchers",
+      "Market support"
+    ],
+    "nutrition": [
+      "Targeted supplementary feeding",
+      "CMAM programming"
+    ],
+    "livelihood": [
+      "Cash for work",
+      "Livelihood support",
+      "Petty trade support"
+    ],
+    "cash_markets": [
+      "Multi-purpose cash (CVA)",
+      "Vouchers",
+      "Trader credit",
+      "Price stabilization measures",
+      "Supply chain restoration"
+    ],
+    "references": [
+      "CALP Cash & Voucher Assistance",
+      "WFP Essential Needs Guidelines",
+      "Global Food Security Cluster guidance"
+    ]
+  },
+  "displacement": {
+    "immediate": [
+      "Targeted food assistance",
+      "Emergency shelter",
+      "Non-food items (NFIs)"
+    ],
+    "nutrition": [
+      "CMAM programming",
+      "SAM/MAM treatment",
+      "Blanket supplementary feeding",
+      "IYCF-E support"
+    ],
+    "livelihood": [
+      "Cash-based transfers",
+      "Livelihood support",
+      "Support to host communities"
+    ],
+    "cash_markets": [
+      "Multi-purpose cash (CVA)",
+      "Vouchers"
+    ],
+    "wash": [
+      "Water trucking",
+      "Water point rehabilitation",
+      "Hygiene kits",
+      "WASH in IDP sites"
+    ],
+    "protection": [
+      "Safeguarding",
+      "GBV risk mitigation",
+      "IDP registration",
+      "Host community support"
+    ],
+    "references": [
+      "Sphere Protection standards",
+      "UNHCR/WFP guidance",
+      "Global Food Security Cluster guidance"
+    ]
+  },
+  "livestock_mortality": {
+    "immediate": [
+      "Emergency veterinary care",
+      "Livestock feed distribution"
+    ],
+    "nutrition": [
+      "CMAM programming",
+      "SAM/MAM treatment",
+      "Blanket supplementary feeding"
+    ],
+    "livelihood": [
+      "Veterinary care (LEGS)",
+      "Livestock feed support",
+      "Strategic destocking",
+      "Restocking where appropriate",
+      "Water for livestock"
+    ],
+    "cash_markets": [
+      "Cash for destocking",
+      "Market support"
+    ],
+    "wash": [
+      "Water for livestock",
+      "Water point rehabilitation"
+    ],
+    "references": [
+      "LEGS livestock emergency guidelines",
+      "FAO livestock support",
+      "WFP Essential Needs Guidelines"
+    ]
+  },
+  "flooding": {
+    "immediate": [
+      "Emergency shelter",
+      "Emergency food assistance",
+      "Non-food items (NFIs)"
+    ],
+    "nutrition": [
+      "CMAM programming",
+      "SAM/MAM treatment"
+    ],
+    "livelihood": [
+      "Seeds and tools for replanting",
+      "Livelihood recovery support"
+    ],
+    "cash_markets": [
+      "Multi-purpose cash (CVA)",
+      "Vouchers"
+    ],
+    "wash": [
+      "Water point rehabilitation",
+      "Water quality treatment",
+      "Hygiene promotion"
+    ],
+    "references": [
+      "Sphere WASH standards",
+      "WFP Essential Needs Guidelines"
+    ]
+  },
+  "crop_pests": {
+    "immediate": [
+      "Emergency food assistance"
+    ],
+    "nutrition": [
+      "CMAM programming",
+      "SAM/MAM treatment"
+    ],
+    "livelihood": [
+      "Pest control support",
+      "Seeds and tools for replanting",
+      "Agricultural extension"
+    ],
+    "cash_markets": [
+      "Multi-purpose cash (CVA)",
+      "Vouchers"
+    ],
+    "references": [
+      "FAO agricultural support",
+      "WFP Essential Needs Guidelines"
+    ]
+  },
+  "market_disruption": {
+    "immediate": [
+      "Emergency food assistance (GFD)",
+      "Vouchers"
+    ],
+    "nutrition": [
+      "CMAM programming",
+      "SAM/MAM treatment"
+    ],
+    "livelihood": [
+      "Cash-based transfers",
+      "Market support",
+      "Supply chain restoration"
+    ],
+    "cash_markets": [
+      "Multi-purpose cash (CVA)",
+      "Vouchers",
+      "Trader credit",
+      "Market infrastructure support"
+    ],
+    "references": [
+      "CALP Cash & Voucher Assistance",
+      "Global Food Security Cluster guidance"
+    ]
+  },
+  "humanitarian_access_constraints": {
+    "immediate": [
+      "Negotiation for access",
+      "Remote management",
+      "Local partner support"
+    ],
+    "nutrition": [
+      "CMAM programming via local partners"
+    ],
+    "livelihood": [
+      "Cash-based transfers where feasible",
+      "Local market support"
+    ],
+    "cash_markets": [
+      "Multi-purpose cash (CVA) where markets function"
+    ],
+    "references": [
+      "Global Food Security Cluster coordination guidance",
+      "WFP Essential Needs Guidelines"
+    ]
+  },
+  "macroeconomic_shocks": {
+    "immediate": [
+      "Cash-based transfers",
+      "Vouchers"
+    ],
+    "nutrition": [
+      "CMAM programming",
+      "SAM/MAM treatment"
+    ],
+    "livelihood": [
+      "Cash for work",
+      "Livelihood support",
+      "Petty trade support"
+    ],
+    "cash_markets": [
+      "Multi-purpose cash (CVA)",
+      "Vouchers",
+      "Market support"
+    ],
+    "references": [
+      "CALP Cash & Voucher Assistance",
+      "WFP Essential Needs Guidelines"
+    ]
+  }
+}
+
