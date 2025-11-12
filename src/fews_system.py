@@ -633,41 +633,41 @@ class FEWSSystem:
                 "drivers": [],
                 "sources": [],
                 "data_quality": "error",
-                    "ipc_phase": assessment.current_phase
-                }
-            
-            # Detect validated shocks BEFORE prompting LLM (zone-specific detection)
-            livelihood_zone_for_detection = livelihood_info.livelihood_system if livelihood_info else "unknown"
-            validated_shock_types, validated_drivers, shock_details = self._detect_validated_shocks(
+                "ipc_phase": assessment.current_phase
+            }
+        
+        # Detect validated shocks BEFORE prompting LLM (zone-specific detection)
+        livelihood_zone_for_detection = livelihood_info.livelihood_system if livelihood_info else "unknown"
+        validated_shock_types, validated_drivers, shock_details = self._detect_validated_shocks(
                 context, region, assessment, livelihood_zone_for_detection
-            )
-            if not validated_shock_types:
+        )
+        if not validated_shock_types:
                 missing_info_logger.info(
                     f"Region: {region} | IPC Phase: {assessment.current_phase} | "
                     f"Notice: No validated shocks detected via structured keyword matching (zone: {livelihood_zone_for_detection})."
                 )
-            
-            # Build domain knowledge context for prompt (reference only)
-            domain_context_parts: List[str] = []
-            if livelihood_info:
+        
+        # Build domain knowledge context for prompt (reference only)
+        domain_context_parts: List[str] = []
+        if livelihood_info:
                 domain_context_parts.append(
                     f"LIVELIHOOD DETAILS: {livelihood_info.livelihood_system} "
                     f"({livelihood_info.elevation_category}). Notes: {livelihood_info.notes}"
                 )
-            if rainfall_info:
+        if rainfall_info:
                 rainfall_detail = f"{rainfall_info.dominant_season}"
                 if rainfall_info.secondary_season:
                     rainfall_detail += f" | Secondary: {rainfall_info.secondary_season}"
                 rainfall_detail += f". Months: {rainfall_info.season_months}. Notes: {rainfall_info.notes}"
                 domain_context_parts.append(f"RAINFALL DETAILS: {rainfall_detail}")
-            if validated_shock_types:
+        if validated_shock_types:
                 domain_context_parts.append(f"VALIDATED SHOCK LABELS: {', '.join(validated_shock_types)}")
-            if validated_drivers:
+        if validated_drivers:
                 domain_context_parts.append(f"VALIDATED DRIVER LABELS: {', '.join(validated_drivers)}")
-            domain_context = "\n".join(domain_context_parts)
-            
-            # Use LLM to extract drivers with strict IPC-aligned prompt
-            prompt = PromptTemplate(
+        domain_context = "\n".join(domain_context_parts)
+        
+        # Use LLM to extract drivers with strict IPC-aligned prompt
+        prompt = PromptTemplate(
                 input_variables=[
                     "region",
                     "ipc_phase",
@@ -743,63 +743,49 @@ CONTEXT FROM SITUATION REPORTS:
 
 Produce a structured, contradiction-free explanation.
 """
-            )
-            
-            chain = prompt | self.llm
-            if validated_shock_types:
+        )
+        
+        chain = prompt | self.llm
+        if validated_shock_types:
                 validated_shocks_str = ", ".join(validated_shock_types)
-            else:
+        else:
                 validated_shocks_str = "None detected via structured keyword matching"
-            
-            explanation = chain.invoke({
+        
+        explanation = chain.invoke({
                 "region": region,
                 "ipc_phase": assessment.current_phase,
                 "validated_shocks": validated_shocks_str,
                 "context": context,
                 "livelihood_system": livelihood_system_for_prompt,
                 "rainfall_season": rainfall_season_for_prompt
-            })
-            
-            # Use validated drivers (already detected before prompting)
-            explanation_lower = explanation.lower()
-            drivers = list(validated_drivers)
-            
-            # Check if explanation indicates insufficient data
-            data_quality = "sufficient"
-            if not validated_shock_types:
+        })
+        
+        # Use validated drivers (already detected before prompting)
+        explanation_lower = explanation.lower()
+        drivers = list(validated_drivers)
+        
+        # Check if explanation indicates insufficient data
+        data_quality = "sufficient"
+        if not validated_shock_types:
                 data_quality = "insufficient_shock_evidence"
-            if "cannot find" in explanation_lower or "not find" in explanation_lower or "insufficient" in explanation_lower:
+        if "cannot find" in explanation_lower or "not find" in explanation_lower or "insufficient" in explanation_lower:
                 data_quality = "insufficient"
                 missing_info_logger.warning(
                     f"Region: {region} | IPC Phase: {assessment.current_phase} | "
                     f"Issue: Insufficient information in situation reports"
                 )
-            
-            sources = [doc.metadata.get('source', 'Unknown') for doc in docs]
-            
-            return {
-                "region": region,
-                "explanation": explanation,
-                "drivers": drivers if drivers else [],
-                "sources": list(set(sources)),
-                "data_quality": data_quality,
-                "ipc_phase": assessment.current_phase,
-                "retrieved_chunks": len(docs)
-            }
-            
-        except Exception as e:
-            error_msg = f"Error retrieving information: {str(e)}"
-            missing_info_logger.error(
-                f"Region: {region} | Error: {error_msg}"
-            )
-            return {
-                "region": region,
-                "explanation": f"Error accessing situation reports: {error_msg}",
-                "drivers": [],
-                "sources": [],
-                "data_quality": "error",
-                "ipc_phase": assessment.current_phase
-            }
+        
+        sources = [doc.metadata.get('source', 'Unknown') for doc in docs]
+        
+        return {
+            "region": region,
+            "explanation": explanation,
+            "drivers": drivers if drivers else [],
+            "sources": list(set(sources)),
+            "data_quality": data_quality,
+            "ipc_phase": assessment.current_phase,
+            "retrieved_chunks": len(docs)
+        }
     
     def function3_recommend_interventions(
         self,
