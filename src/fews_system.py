@@ -174,10 +174,10 @@ class FEWSSystem:
         context: str,
         region: str,
         assessment: RegionRiskAssessment
-    ) -> List[str]:
+    ) -> Tuple[List[str], List[str]]:
         """
         Detect shocks using structured keyword matching.
-        Returns ONLY shocks found in shock_ontology.json.
+        Returns shocks and mapped drivers.
         
         Args:
             context: Retrieved text context
@@ -185,7 +185,7 @@ class FEWSSystem:
             assessment: IPC risk assessment
         
         Returns:
-            List of validated shock driver names
+            Tuple of (shock_types, driver_names)
         """
         # Run keyword detection on context
         detected = self.domain_knowledge.detect_shocks(context)
@@ -196,27 +196,9 @@ class FEWSSystem:
             if confidence >= SHOCK_CONFIDENCE_THRESHOLD
         ][:MAX_SHOCKS_TO_RETURN]
         
-        # Map to driver names
-        shock_to_driver = {
-            "drought": "Drought/Rainfall deficit",
-            "conflict": "Conflict and insecurity",
-            "displacement": "Displacement",
-            "price_increase": "Price increases",
-            "crop_pests": "Crop failure",
-            "livestock_mortality": "Livestock losses",
-            "market_disruption": "Market disruption",
-            "humanitarian_access_constraints": "Humanitarian access constraints",
-            "flooding": "Flooding",
-            "macroeconomic_shocks": "Macroeconomic shocks"
-        }
+        drivers = self.domain_knowledge.map_shocks_to_drivers(validated_shocks)
         
-        drivers = [
-            shock_to_driver.get(s, s)
-            for s in validated_shocks
-            if s in shock_to_driver
-        ]
-        
-        return drivers
+        return validated_shocks, drivers
     
     def setup_vector_stores(self, force_recreate: bool = False):
         """
@@ -461,20 +443,42 @@ class FEWSSystem:
                 }
         
         # Get structured domain knowledge
-        geographic_parts = assessment.geographic_full_name.split(',')
-        region_name = geographic_parts[0].strip() if geographic_parts else region
-        zone_name = geographic_parts[1].strip() if len(geographic_parts) > 1 else None
+        geographic_parts = [part.strip() for part in assessment.geographic_full_name.split(',') if part.strip()]
+        admin_name = geographic_parts[0] if geographic_parts else region
+        country_name = geographic_parts[-1] if geographic_parts else "Ethiopia"
+        region_name = geographic_parts[-2] if len(geographic_parts) >= 2 else None
+        zone_name = geographic_parts[-3] if len(geographic_parts) >= 3 else None
+        
+        if zone_name and zone_name == admin_name:
+            zone_name = None
+        if region_name and region_name in ("Ethiopia", country_name):
+            region_name = None
+        if zone_name and region_name and zone_name == region_name:
+            zone_name = None
+        
+        lookup_region = region_name or zone_name or admin_name
         
         # Get livelihood system from domain knowledge
-        livelihood_info = self.domain_knowledge.get_livelihood_system(region_name, zone_name)
+        livelihood_info = self.domain_knowledge.get_livelihood_system(
+            region=lookup_region,
+            zone=zone_name,
+            admin=admin_name
+        )
         livelihood_system = livelihood_info.livelihood_system if livelihood_info else None
         
         # Get rainfall season from domain knowledge
-        rainfall_info = self.domain_knowledge.get_rainfall_season(region_name, zone_name)
+        rainfall_info = self.domain_knowledge.get_rainfall_season(
+            region=lookup_region,
+            zone=zone_name,
+            admin=admin_name
+        )
         dominant_season = rainfall_info.dominant_season if rainfall_info else None
         
         # Build expanded query with region context
-        region_variations = [region]
+        region_variations = []
+        for name in [region, admin_name, zone_name, region_name]:
+            if name and name not in region_variations:
+                region_variations.append(name)
         for part in geographic_parts:
             part = part.strip()
             if part and part != region and part != "Ethiopia":
@@ -556,34 +560,58 @@ class FEWSSystem:
                 }
             
             # Detect validated shocks BEFORE prompting LLM
-            validated_drivers = self._detect_validated_shocks(context, region, assessment)
-            
-            # Get shock types for domain context
-            detected_shocks = self.domain_knowledge.detect_shocks(context)
-            shock_types = [shock[0] for shock in detected_shocks[:MAX_SHOCKS_TO_RETURN]]
+            shock_types, validated_drivers = self._detect_validated_shocks(context, region, assessment)
+            if not shock_types:
+                missing_info_logger.info(
+                    f"Region: {region} | IPC Phase: {assessment.current_phase} | "
+                    "Notice: No validated shocks detected via structured keyword matching."
+                )
             
             # Build domain knowledge context for prompt (MANDATORY - LLM cannot infer these)
             domain_context = ""
             if livelihood_info:
-                domain_context += f"\nLIVELIHOOD SYSTEM (MANDATORY - from domain knowledge CSV): {livelihood_info.livelihood_system} ({livelihood_info.elevation_category})\n"
-                domain_context += f"  → You MUST use this livelihood system. Do NOT infer or guess a different one.\n"
+                domain_context += (
+                    f"\nLIVELIHOOD SYSTEM (MANDATORY - domain knowledge): "
+                    f"{livelihood_info.livelihood_system} ({livelihood_info.elevation_category}). "
+                    f"Notes: {livelihood_info.notes}\n"
+                    "  → You MUST use this livelihood system. Do NOT infer or guess a different one.\n"
+                )
             else:
-                domain_context += f"\nLIVELIHOOD SYSTEM: Not found in domain knowledge. Use 'Unknown livelihood system'.\n"
-                domain_context += f"  → Do NOT infer or guess a livelihood system.\n"
+                domain_context += (
+                    "\nLIVELIHOOD SYSTEM: Not found in domain knowledge. "
+                    "Use 'Unknown livelihood system' and do NOT infer another system.\n"
+                )
             
             if rainfall_info:
-                domain_context += f"\nRAINFALL SEASON (MANDATORY - from domain knowledge CSV): {rainfall_info.dominant_season} ({rainfall_info.season_months})\n"
-                domain_context += f"  → You MUST use this season name when discussing rainfall. Do NOT use other season names.\n"
+                secondary = f", Secondary: {rainfall_info.secondary_season}" if rainfall_info.secondary_season else ""
+                domain_context += (
+                    f"\nRAINFALL SEASON (MANDATORY - domain knowledge): "
+                    f"{rainfall_info.dominant_season}{secondary} "
+                    f"({rainfall_info.season_months}). Notes: {rainfall_info.notes}\n"
+                    "  → You MUST use these season names. Do NOT introduce other seasons.\n"
+                )
             else:
-                domain_context += f"\nRAINFALL SEASON: Not found in domain knowledge.\n"
-                domain_context += f"  → Use neutral language: 'below-average rainfall' or 'rainfall anomalies'. Do NOT name specific seasons.\n"
+                domain_context += (
+                    "\nRAINFALL SEASON: Not found in domain knowledge. "
+                    "Use neutral language such as 'rainfall anomalies'. Do NOT name specific seasons.\n"
+                )
+            
+            if shock_types:
+                domain_context += (
+                    f"\nVALIDATED SHOCKS (MANDATORY - structured detection): {', '.join(shock_types)}\n"
+                    "  → You MUST only discuss these shocks. Do NOT add shocks not in this list.\n"
+                )
+            else:
+                domain_context += (
+                    "\nVALIDATED SHOCKS: None detected via structured keyword matching.\n"
+                    "  → State clearly that no validated shocks were identified and avoid naming specific drivers.\n"
+                )
             
             if validated_drivers:
-                domain_context += f"\nVALIDATED SHOCKS (MANDATORY - from structured detection): {', '.join(validated_drivers)}\n"
-                domain_context += f"  → You MUST only discuss these shocks. Do NOT add shocks not in this list.\n"
-            else:
-                domain_context += f"\nVALIDATED SHOCKS: None detected via structured keyword matching.\n"
-                domain_context += f"  → If context mentions shocks, use only those explicitly stated. Do NOT infer additional shocks.\n"
+                domain_context += (
+                    f"VALIDATED DRIVER LABELS: {', '.join(validated_drivers)}. "
+                    "Use these labels when discussing impacts.\n"
+                )
             
             # Use LLM to extract drivers with strict IPC-aligned prompt
             prompt = PromptTemplate(
@@ -599,6 +627,7 @@ You MUST NOT infer, guess, or invent:
 - Livelihood systems (MUST use domain knowledge CSV lookup)
 - Rainfall seasons (MUST use domain knowledge CSV lookup)
 - Shocks (MUST use only validated shocks from structured detection)
+- IPC Phase (MUST use the provided IPC phase)
 
 ===========================================================
 CRITICAL CONSTRAINTS (MANDATORY)
@@ -618,6 +647,10 @@ CRITICAL CONSTRAINTS (MANDATORY)
    - You MUST only discuss shocks listed in VALIDATED SHOCKS.
    - DO NOT add shocks not in that list, even if context mentions them.
    - If validated shocks list is empty, state "No validated shocks detected via structured keyword matching."
+
+4. IPC PHASE:
+   - You MUST treat {region} as IPC Phase {ipc_phase}.
+   - You may discuss evidence gaps, but you MUST NOT state that the IPC phase is unknown or misaligned.
 
 ===========================================================
 MANDATORY ANALYSIS FRAMEWORK (MUST FOLLOW THIS EXACT ORDER)
@@ -640,6 +673,7 @@ D. Shocks
    - List ONLY the validated shocks from VALIDATED SHOCKS
    - For each shock, cite evidence from CONTEXT FROM SITUATION REPORTS
    - DO NOT add shocks not in the validated list
+   - If VALIDATED SHOCKS indicates none, state this explicitly and skip naming shocks
 
 E. Livelihood Impacts
    - Explain how shocks affect agricultural production, livestock, labor markets, market access
@@ -680,7 +714,10 @@ Produce a detailed, structured IPC-style analytical narrative following the exac
             )
             
             chain = prompt | self.llm
-            validated_shocks_str = ", ".join(validated_drivers) if validated_drivers else "None detected via structured keyword matching"
+            if shock_types:
+                validated_shocks_str = ", ".join(shock_types)
+            else:
+                validated_shocks_str = "None detected via structured keyword matching"
             
             explanation = chain.invoke({
                 "region": region,
@@ -692,29 +729,12 @@ Produce a detailed, structured IPC-style analytical narrative following the exac
             
             # Use validated drivers (already detected before prompting)
             explanation_lower = explanation.lower()
-            drivers = validated_drivers if validated_drivers else []
-            
-            # Fallback: if no validated shocks, try keyword matching on explanation
-            if not drivers:
-                if "conflict" in explanation_lower or "violence" in explanation_lower or "insecurity" in explanation_lower:
-                    drivers.append("Conflict and insecurity")
-                if "drought" in explanation_lower or "rainfall" in explanation_lower or "dry" in explanation_lower or "deficit" in explanation_lower:
-                    drivers.append("Drought/Rainfall deficit")
-                if "price" in explanation_lower or "cost" in explanation_lower or "market" in explanation_lower:
-                    drivers.append("Price increases")
-                if "displacement" in explanation_lower or "displaced" in explanation_lower or "idp" in explanation_lower:
-                    drivers.append("Displacement")
-                if "crop" in explanation_lower or "harvest" in explanation_lower or "agricultural" in explanation_lower:
-                    drivers.append("Crop failure")
-                if "livestock" in explanation_lower or "pastoral" in explanation_lower:
-                    drivers.append("Livestock losses")
-                if "flood" in explanation_lower or "flooding" in explanation_lower:
-                    drivers.append("Flooding")
-                if "access" in explanation_lower and ("humanitarian" in explanation_lower or "constraint" in explanation_lower):
-                    drivers.append("Humanitarian access constraints")
+            drivers = list(validated_drivers)
             
             # Check if explanation indicates insufficient data
             data_quality = "sufficient"
+            if not shock_types:
+                data_quality = "insufficient_shock_evidence"
             if "cannot find" in explanation_lower or "not find" in explanation_lower or "insufficient" in explanation_lower:
                 data_quality = "insufficient"
                 missing_info_logger.warning(
@@ -727,7 +747,7 @@ Produce a detailed, structured IPC-style analytical narrative following the exac
             return {
                 "region": region,
                 "explanation": explanation,
-                "drivers": drivers if drivers else ["Information not clearly identified"],
+                "drivers": drivers if drivers else [],
                 "sources": list(set(sources)),
                 "data_quality": data_quality,
                 "ipc_phase": assessment.current_phase,

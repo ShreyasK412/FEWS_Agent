@@ -39,6 +39,20 @@ class DomainKnowledge:
         self.rainfall_df: Optional[pd.DataFrame] = None
         self.shock_ontology: Dict = {}
         self.driver_interventions: Dict = {}
+        self._fallback_livelihoods: Dict[str, LivelihoodInfo] = {}
+        self._fallback_rainfall: Dict[str, RainfallSeasonInfo] = {}
+        self._shock_to_driver: Dict[str, str] = {
+            "drought": "Drought/Rainfall deficit",
+            "conflict": "Conflict and insecurity",
+            "displacement": "Displacement",
+            "price_increase": "Price increases",
+            "crop_pests": "Crop failure",
+            "livestock_mortality": "Livestock losses",
+            "market_disruption": "Market disruption",
+            "humanitarian_access_constraints": "Humanitarian access constraints",
+            "flooding": "Flooding",
+            "macroeconomic_shocks": "Macroeconomic shocks"
+        }
         
         self._load_all()
     
@@ -48,9 +62,12 @@ class DomainKnowledge:
         livelihood_file = self.data_dir / "livelihood_systems.csv"
         if livelihood_file.exists():
             self.livelihood_df = pd.read_csv(livelihood_file)
-            # Normalize region names for matching
-            self.livelihood_df['region_upper'] = self.livelihood_df['region'].str.upper()
-            self.livelihood_df['zone_upper'] = self.livelihood_df['zone'].str.upper()
+            if not self.livelihood_df.empty:
+                # Normalize names for matching
+                self.livelihood_df['region_upper'] = self.livelihood_df['region'].str.upper()
+                self.livelihood_df['zone_upper'] = self.livelihood_df['zone'].str.upper()
+                self.livelihood_df['region_clean'] = self.livelihood_df['region_upper'].apply(self._normalize_location_name)
+                self.livelihood_df['zone_clean'] = self.livelihood_df['zone_upper'].apply(self._normalize_location_name)
         else:
             print(f"⚠️  Warning: {livelihood_file} not found. Livelihood lookups will use fallback logic.")
         
@@ -58,8 +75,11 @@ class DomainKnowledge:
         rainfall_file = self.data_dir / "rainfall_seasons.csv"
         if rainfall_file.exists():
             self.rainfall_df = pd.read_csv(rainfall_file)
-            self.rainfall_df['region_upper'] = self.rainfall_df['region'].str.upper()
-            self.rainfall_df['zone_upper'] = self.rainfall_df['zone'].str.upper()
+            if not self.rainfall_df.empty:
+                self.rainfall_df['region_upper'] = self.rainfall_df['region'].str.upper()
+                self.rainfall_df['zone_upper'] = self.rainfall_df['zone'].str.upper()
+                self.rainfall_df['region_clean'] = self.rainfall_df['region_upper'].apply(self._normalize_location_name)
+                self.rainfall_df['zone_clean'] = self.rainfall_df['zone_upper'].apply(self._normalize_location_name)
         else:
             print(f"⚠️  Warning: {rainfall_file} not found. Rainfall season lookups will use fallback logic.")
         
@@ -78,101 +98,317 @@ class DomainKnowledge:
                 self.driver_interventions = json.load(f)
         else:
             print(f"⚠️  Warning: {intervention_file} not found. Intervention mapping will use fallback logic.")
+        
+        self._initialize_fallbacks()
+
+    @staticmethod
+    def _normalize_location_name(name: Optional[str]) -> str:
+        """Normalize location names for matching."""
+        if not name:
+            return ""
+        cleaned = name.upper().strip()
+        replacements = [
+            (" ADMINISTRATIVE", ""),
+            (" ZONE", ""),
+            (" REGION", ""),
+            (" SPECIAL", ""),
+            (" WOREDA", ""),
+            (" DISTRICT", ""),
+            (" SUBCITY", ""),
+            (" SUB-CITY", ""),
+        ]
+        for old, new in replacements:
+            cleaned = cleaned.replace(old, new)
+        return " ".join(cleaned.split())
+
+    def _initialize_fallbacks(self) -> None:
+        """Initialize fallback maps for livelihoods and rainfall seasons."""
+        self._fallback_livelihoods = {
+            "TIGRAY": LivelihoodInfo(
+                region="Tigray",
+                zone="Highland areas",
+                livelihood_system="rainfed cropping",
+                elevation_category="highland",
+                notes="Fallback: Highland cereal-based cropping system typical for Tigray."
+            ),
+            "AMHARA": LivelihoodInfo(
+                region="Amhara",
+                zone="Highland areas",
+                livelihood_system="rainfed cropping",
+                elevation_category="highland",
+                notes="Fallback: Highland cereal-based cropping system typical for Amhara."
+            ),
+            "OROMIA": LivelihoodInfo(
+                region="Oromia",
+                zone="Mixed livelihood areas",
+                livelihood_system="mixed farming",
+                elevation_category="mid-altitude",
+                notes="Fallback: Mixed crop-livestock livelihood system."
+            ),
+            "SOMALI": LivelihoodInfo(
+                region="Somali",
+                zone="Pastoral areas",
+                livelihood_system="pastoral",
+                elevation_category="lowland",
+                notes="Fallback: Pastoral system typical for Somali region."
+            ),
+            "AFAR": LivelihoodInfo(
+                region="Afar",
+                zone="Pastoral areas",
+                livelihood_system="pastoral",
+                elevation_category="lowland",
+                notes="Fallback: Arid pastoral system reliant on livestock."
+            ),
+            "SNNPR": LivelihoodInfo(
+                region="SNNPR",
+                zone="Mixed areas",
+                livelihood_system="agropastoral",
+                elevation_category="mid-altitude",
+                notes="Fallback: Mixed enset-root crop and agropastoral system."
+            ),
+        }
+        
+        self._fallback_rainfall = {
+            "TIGRAY": RainfallSeasonInfo(
+                region="Tigray",
+                zone="Highland areas",
+                dominant_season="Kiremt (June-September)",
+                secondary_season=None,
+                season_months="Jun-Sep",
+                notes="Fallback: Highland main cropping season."
+            ),
+            "AMHARA": RainfallSeasonInfo(
+                region="Amhara",
+                zone="Highland areas",
+                dominant_season="Kiremt (June-September)",
+                secondary_season=None,
+                season_months="Jun-Sep",
+                notes="Fallback: Highland main cropping season."
+            ),
+            "OROMIA": RainfallSeasonInfo(
+                region="Oromia",
+                zone="Mixed areas",
+                dominant_season="Belg/Kiremt mixed rainfall pattern",
+                secondary_season="Belg (Feb-May)",
+                season_months="Feb-May, Jun-Sep",
+                notes="Fallback: Mixed rainfall seasons across Oromia."
+            ),
+            "SOMALI": RainfallSeasonInfo(
+                region="Somali",
+                zone="Pastoral areas",
+                dominant_season="Gu/Genna (Mar-May)",
+                secondary_season="Deyr/Hageya (Oct-Dec)",
+                season_months="Mar-May, Oct-Dec",
+                notes="Fallback: Pastoral rainfall seasons."
+            ),
+            "AFAR": RainfallSeasonInfo(
+                region="Afar",
+                zone="Pastoral areas",
+                dominant_season="Belg pulse rains",
+                secondary_season=None,
+                season_months="Feb-Apr",
+                notes="Fallback: Erratic belg pulses and dry season conditions."
+            ),
+            "SNNPR": RainfallSeasonInfo(
+                region="SNNPR",
+                zone="Mixed areas",
+                dominant_season="Belg/Kiremt mixed rainfall pattern",
+                secondary_season=None,
+                season_months="Mar-May, Jun-Sep",
+                notes="Fallback: Mixed rainfall seasons for enset-root crop systems."
+            ),
+        }
     
-    def get_livelihood_system(self, region: str, zone: Optional[str] = None) -> Optional[LivelihoodInfo]:
+    def get_livelihood_system(
+        self,
+        region: Optional[str],
+        zone: Optional[str] = None,
+        admin: Optional[str] = None
+    ) -> Optional[LivelihoodInfo]:
         """
         Get livelihood system for a region/zone.
         
         Args:
             region: Region name (e.g., "Tigray", "SNNPR")
             zone: Optional zone name (e.g., "Central Zone", "Burji Special")
+            admin: Optional woreda/district name
         
         Returns:
             LivelihoodInfo if found, None otherwise
         """
-        if self.livelihood_df is None:
-            return None
-        
+        if not region:
+            region = ""
         region_upper = region.upper()
+        region_clean = self._normalize_location_name(region)
+        zone_clean = self._normalize_location_name(zone) if zone else ""
+        admin_clean = self._normalize_location_name(admin) if admin else ""
         
-        # Try exact match first
-        if zone:
-            zone_upper = zone.upper()
-            matches = self.livelihood_df[
-                (self.livelihood_df['region_upper'] == region_upper) &
-                (self.livelihood_df['zone_upper'] == zone_upper)
-            ]
-            if not matches.empty:
-                row = matches.iloc[0]
-                return LivelihoodInfo(
-                    region=row['region'],
-                    zone=row['zone'],
-                    livelihood_system=row['livelihood_system'],
-                    elevation_category=row['elevation_category'],
-                    notes=row['notes']
-                )
+        if self.livelihood_df is not None and not self.livelihood_df.empty:
+            # 1. Zone-level exact/partial match within region
+            if zone_clean:
+                zone_matches = self.livelihood_df[
+                    (self.livelihood_df['region_clean'] == region_clean) &
+                    (
+                        (self.livelihood_df['zone_clean'] == zone_clean) |
+                        (self.livelihood_df['zone_clean'].str.contains(zone_clean, na=False, regex=False))
+                    )
+                ]
+                if not zone_matches.empty:
+                    row = zone_matches.iloc[0]
+                    return LivelihoodInfo(
+                        region=row['region'],
+                        zone=row['zone'],
+                        livelihood_system=row['livelihood_system'],
+                        elevation_category=row.get('elevation_category', ''),
+                        notes=row.get('notes', '')
+                    )
+            
+            # 2. Region-only match
+            if region_clean:
+                region_matches = self.livelihood_df[
+                    (self.livelihood_df['region_clean'] == region_clean) |
+                    (self.livelihood_df['region_clean'].str.contains(region_clean, na=False, regex=False))
+                ]
+                if not region_matches.empty:
+                    row = region_matches.iloc[0]
+                    return LivelihoodInfo(
+                        region=row['region'],
+                        zone=row['zone'],
+                        livelihood_system=row['livelihood_system'],
+                        elevation_category=row.get('elevation_category', ''),
+                        notes=row.get('notes', '')
+                    )
+            
+            # 3. Admin name fallback (match admin to zone names)
+            if admin_clean:
+                admin_matches = self.livelihood_df[
+                    self.livelihood_df['zone_clean'].str.contains(admin_clean, na=False, regex=False)
+                ]
+                if not admin_matches.empty:
+                    row = admin_matches.iloc[0]
+                    return LivelihoodInfo(
+                        region=row['region'],
+                        zone=row['zone'],
+                        livelihood_system=row['livelihood_system'],
+                        elevation_category=row.get('elevation_category', ''),
+                        notes=row.get('notes', '')
+                    )
         
-        # Try region-only match
-        matches = self.livelihood_df[self.livelihood_df['region_upper'] == region_upper]
-        if not matches.empty:
-            # If multiple zones, prefer the most common one
-            row = matches.iloc[0]
-            return LivelihoodInfo(
-                region=row['region'],
-                zone=row['zone'],
-                livelihood_system=row['livelihood_system'],
-                elevation_category=row['elevation_category'],
-                notes=row['notes']
-            )
+        # 4. Regional fallback map
+        if region_upper in self._fallback_livelihoods:
+            return self._fallback_livelihoods[region_upper]
+        
+        # 5. Broad macro-region heuristics
+        if "TIGRAY" in region_upper:
+            return self._fallback_livelihoods["TIGRAY"]
+        if "AMHARA" in region_upper:
+            return self._fallback_livelihoods["AMHARA"]
+        if "OROMIA" in region_upper:
+            return self._fallback_livelihoods["OROMIA"]
+        if "SOMALI" in region_upper:
+            return self._fallback_livelihoods["SOMALI"]
+        if "AFAR" in region_upper:
+            return self._fallback_livelihoods["AFAR"]
+        if "SNNP" in region_upper or "SNNPR" in region_upper:
+            return self._fallback_livelihoods["SNNPR"]
         
         return None
     
-    def get_rainfall_season(self, region: str, zone: Optional[str] = None) -> Optional[RainfallSeasonInfo]:
+    def get_rainfall_season(
+        self,
+        region: Optional[str],
+        zone: Optional[str] = None,
+        admin: Optional[str] = None
+    ) -> Optional[RainfallSeasonInfo]:
         """
         Get rainfall season information for a region/zone.
         
         Args:
             region: Region name
             zone: Optional zone name
+            admin: Optional woreda/district name
         
         Returns:
             RainfallSeasonInfo if found, None otherwise
         """
-        if self.rainfall_df is None:
-            return None
-        
+        if not region:
+            region = ""
         region_upper = region.upper()
+        region_clean = self._normalize_location_name(region)
+        zone_clean = self._normalize_location_name(zone) if zone else ""
+        admin_clean = self._normalize_location_name(admin) if admin else ""
         
-        # Try exact match first
-        if zone:
-            zone_upper = zone.upper()
-            matches = self.rainfall_df[
-                (self.rainfall_df['region_upper'] == region_upper) &
-                (self.rainfall_df['zone_upper'] == zone_upper)
-            ]
-            if not matches.empty:
-                row = matches.iloc[0]
-                return RainfallSeasonInfo(
-                    region=row['region'],
-                    zone=row['zone'],
-                    dominant_season=row['dominant_season'],
-                    secondary_season=row.get('secondary_season'),
-                    season_months=row['season_months'],
-                    notes=row['notes']
-                )
+        if self.rainfall_df is not None and not self.rainfall_df.empty:
+            # 1. Zone-level exact/partial match within region
+            if zone_clean:
+                zone_matches = self.rainfall_df[
+                    (self.rainfall_df['region_clean'] == region_clean) &
+                    (
+                        (self.rainfall_df['zone_clean'] == zone_clean) |
+                        (self.rainfall_df['zone_clean'].str.contains(zone_clean, na=False, regex=False))
+                    )
+                ]
+                if not zone_matches.empty:
+                    row = zone_matches.iloc[0]
+                    return RainfallSeasonInfo(
+                        region=row['region'],
+                        zone=row['zone'],
+                        dominant_season=row['dominant_season'],
+                        secondary_season=row.get('secondary_season'),
+                        season_months=row['season_months'],
+                        notes=row.get('notes', '')
+                    )
+            
+            # 2. Region-only match
+            if region_clean:
+                region_matches = self.rainfall_df[
+                    (self.rainfall_df['region_clean'] == region_clean) |
+                    (self.rainfall_df['region_clean'].str.contains(region_clean, na=False, regex=False))
+                ]
+                if not region_matches.empty:
+                    row = region_matches.iloc[0]
+                    return RainfallSeasonInfo(
+                        region=row['region'],
+                        zone=row['zone'],
+                        dominant_season=row['dominant_season'],
+                        secondary_season=row.get('secondary_season'),
+                        season_months=row['season_months'],
+                        notes=row.get('notes', '')
+                    )
+            
+            # 3. Admin fallback using zone matches
+            if admin_clean:
+                admin_matches = self.rainfall_df[
+                    self.rainfall_df['zone_clean'].str.contains(admin_clean, na=False, regex=False)
+                ]
+                if not admin_matches.empty:
+                    row = admin_matches.iloc[0]
+                    return RainfallSeasonInfo(
+                        region=row['region'],
+                        zone=row['zone'],
+                        dominant_season=row['dominant_season'],
+                        secondary_season=row.get('secondary_season'),
+                        season_months=row['season_months'],
+                        notes=row.get('notes', '')
+                    )
         
-        # Try region-only match
-        matches = self.rainfall_df[self.rainfall_df['region_upper'] == region_upper]
-        if not matches.empty:
-            row = matches.iloc[0]
-            return RainfallSeasonInfo(
-                region=row['region'],
-                zone=row['zone'],
-                dominant_season=row['dominant_season'],
-                secondary_season=row.get('secondary_season'),
-                season_months=row['season_months'],
-                notes=row['notes']
-            )
+        # 4. Regional fallback map
+        if region_upper in self._fallback_rainfall:
+            return self._fallback_rainfall[region_upper]
+        
+        # 5. Macro-region heuristics
+        if "TIGRAY" in region_upper:
+            return self._fallback_rainfall["TIGRAY"]
+        if "AMHARA" in region_upper:
+            return self._fallback_rainfall["AMHARA"]
+        if "OROMIA" in region_upper:
+            return self._fallback_rainfall["OROMIA"]
+        if "SOMALI" in region_upper:
+            return self._fallback_rainfall["SOMALI"]
+        if "AFAR" in region_upper:
+            return self._fallback_rainfall["AFAR"]
+        if "SNNP" in region_upper or "SNNPR" in region_upper:
+            return self._fallback_rainfall["SNNPR"]
         
         return None
     
@@ -201,9 +437,17 @@ class DomainKnowledge:
                 confidence = min(matches / len(keywords) * 2, 1.0)  # Normalize to 0-1
                 detected.append((shock_type, confidence))
         
-        # Sort by confidence (descending)
         detected.sort(key=lambda x: x[1], reverse=True)
         return detected
+
+    def map_shocks_to_drivers(self, shock_types: List[str]) -> List[str]:
+        """Map shock ontology keys to human-readable drivers."""
+        drivers: List[str] = []
+        for shock in shock_types:
+            driver = self._shock_to_driver.get(shock)
+            if driver and driver not in drivers:
+                drivers.append(driver)
+        return drivers
     
     def get_interventions_for_driver(self, driver: str) -> Optional[Dict]:
         """
