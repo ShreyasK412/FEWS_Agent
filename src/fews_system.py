@@ -91,6 +91,9 @@ class FEWSSystem:
         self.doc_processor = DocumentProcessor()
         self.domain_knowledge = DomainKnowledge()
         
+        # Logger
+        self.logger = missing_info_logger
+        
         # Vector stores
         self.reports_vectorstore: Optional[Chroma] = None
         self.interventions_vectorstore: Optional[Chroma] = None
@@ -704,9 +707,9 @@ class FEWSSystem:
                 "drivers": [],
                 "sources": [],
                 "data_quality": "error",
-                "ipc_phase": assessment.current_phase
-            }
-        
+                    "ipc_phase": assessment.current_phase
+                }
+            
         # Extract detailed shocks with evidence using regex patterns
         admin_region = assessment.region or ""
         livelihood_zone_for_detection = livelihood_info.livelihood_system if livelihood_info else "unknown"
@@ -828,10 +831,10 @@ If a field is present, you MUST NOT claim it is missing.
 MANDATORY ANALYSIS STRUCTURE
 ===========================================================
 
-A. Overview  
+A. Overview
 A concise 2–3 sentence summary of the food security situation.
 
-B. Livelihood System  
+B. Livelihood System
 Use EXACTLY the livelihood system passed in: {livelihood_system}.  
 Explain why this livelihood is sensitive to shocks.
 
@@ -901,16 +904,16 @@ Produce a structured, contradiction-free explanation.
         geographic_context = assessment.geographic_full_name or f"{region}, {zone_name_str}, {admin_region}, Ethiopia"
 
         explanation = chain.invoke({
-                "region": region,
-                "ipc_phase": assessment.current_phase,
-                "shocks_formatted": shocks_formatted,
-                "context": context,
-                "livelihood_system": livelihood_system_for_prompt,
-                "rainfall_season": rainfall_season_for_prompt,
-                "rainfall_clarification": rainfall_clarification,
-                "admin_region": admin_region,
-                "zone_name": zone_name_str,
-                "geographic_context": geographic_context
+            "region": region,
+            "ipc_phase": assessment.current_phase,
+            "shocks_formatted": shocks_formatted,
+            "context": context,
+            "livelihood_system": livelihood_system_for_prompt,
+            "rainfall_season": rainfall_season_for_prompt,
+            "rainfall_clarification": rainfall_clarification,
+            "admin_region": admin_region,
+            "zone_name": zone_name_str,
+            "geographic_context": geographic_context
         })
         
         # Use validated drivers (already detected before prompting)
@@ -920,13 +923,13 @@ Produce a structured, contradiction-free explanation.
         # Check if explanation indicates insufficient data
         data_quality = "sufficient"
         if not validated_shock_types:
-                data_quality = "insufficient_shock_evidence"
+            data_quality = "insufficient_shock_evidence"
         if "cannot find" in explanation_lower or "not find" in explanation_lower or "insufficient" in explanation_lower:
-                data_quality = "insufficient"
-                missing_info_logger.warning(
-                    f"Region: {region} | IPC Phase: {assessment.current_phase} | "
-                    f"Issue: Insufficient information in situation reports"
-                )
+            data_quality = "insufficient"
+            missing_info_logger.warning(
+                f"Region: {region} | IPC Phase: {assessment.current_phase} | "
+                f"Issue: Insufficient information in situation reports"
+            )
         
         sources = [doc.metadata.get('source', 'Unknown') for doc in docs]
         
