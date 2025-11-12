@@ -8,6 +8,15 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 from dataclasses import dataclass
 
+try:
+    from rapidfuzz import fuzz
+    RAPIDFUZZ_AVAILABLE = True
+except ImportError:
+    RAPIDFUZZ_AVAILABLE = False
+
+from .config import FUZZY_MATCH_THRESHOLD, MAX_FUZZY_CANDIDATES
+from .exceptions import RegionNotFoundError
+
 
 @dataclass
 class RegionRiskAssessment:
@@ -204,7 +213,18 @@ class IPCParser:
         return assessments
     
     def get_region_assessment(self, region: str) -> Optional[RegionRiskAssessment]:
-        """Get risk assessment for a specific region with fuzzy matching."""
+        """
+        Get risk assessment for a specific region with fuzzy matching.
+        
+        Args:
+            region: Region name to search for
+        
+        Returns:
+            RegionRiskAssessment if found, None otherwise
+        
+        Raises:
+            RegionNotFoundError: If region not found and no close matches
+        """
         region_lower = region.lower().strip()
         
         # First try exact match (case-insensitive)
@@ -218,8 +238,29 @@ class IPCParser:
             if region_lower in assessment.region.lower() or assessment.region.lower() in region_lower:
                 return assessment
         
-        # Try fuzzy match (similarity)
-        # Simple similarity: check if most words match
+        # Try fuzzy match with rapidfuzz if available
+        if RAPIDFUZZ_AVAILABLE:
+            best_match = None
+            best_score = 0
+            candidates = []
+            
+            for assessment in assessments:
+                score = fuzz.WRatio(region_lower, assessment.region.lower())
+                if score >= FUZZY_MATCH_THRESHOLD:
+                    candidates.append((score, assessment))
+                    if score > best_score:
+                        best_score = score
+                        best_match = assessment
+            
+            if best_match:
+                return best_match
+            
+            # Return top candidates for user selection
+            if candidates:
+                candidates.sort(key=lambda x: x[0], reverse=True)
+                return candidates[0][1]  # Return best match even if below threshold
+        
+        # Fallback: simple word-based similarity
         region_words = set(region_lower.split())
         best_match = None
         best_score = 0
@@ -227,16 +268,52 @@ class IPCParser:
         for assessment in assessments:
             assessment_words = set(assessment.region.lower().split())
             if region_words and assessment_words:
-                # Calculate Jaccard similarity (intersection over union)
                 intersection = len(region_words & assessment_words)
                 union = len(region_words | assessment_words)
                 if union > 0:
-                    score = intersection / union
-                    if score > best_score and score >= 0.5:  # At least 50% similarity
+                    score = (intersection / union) * 100  # Convert to percentage
+                    if score > best_score and score >= FUZZY_MATCH_THRESHOLD:
                         best_score = score
                         best_match = assessment
         
         return best_match
+    
+    def get_region_candidates(self, region: str, max_candidates: int = MAX_FUZZY_CANDIDATES) -> List[Tuple[str, float]]:
+        """
+        Get fuzzy match candidates for a region name.
+        
+        Args:
+            region: Region name to search for
+            max_candidates: Maximum number of candidates to return
+        
+        Returns:
+            List of (region_name, similarity_score) tuples
+        """
+        region_lower = region.lower().strip()
+        assessments = self.identify_at_risk_regions()
+        candidates = []
+        
+        if RAPIDFUZZ_AVAILABLE:
+            for assessment in assessments:
+                score = fuzz.WRatio(region_lower, assessment.region.lower())
+                if score >= FUZZY_MATCH_THRESHOLD:
+                    candidates.append((assessment.region, score))
+        else:
+            # Fallback: word-based similarity
+            region_words = set(region_lower.split())
+            for assessment in assessments:
+                assessment_words = set(assessment.region.lower().split())
+                if region_words and assessment_words:
+                    intersection = len(region_words & assessment_words)
+                    union = len(region_words | assessment_words)
+                    if union > 0:
+                        score = (intersection / union) * 100
+                        if score >= FUZZY_MATCH_THRESHOLD:
+                            candidates.append((assessment.region, score))
+        
+        # Sort by score descending and return top candidates
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        return candidates[:max_candidates]
 
 
 if __name__ == "__main__":

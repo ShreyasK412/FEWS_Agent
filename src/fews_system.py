@@ -8,7 +8,7 @@ Core system with 3 functions:
 import os
 import logging
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 
 from langchain_chroma import Chroma
@@ -20,6 +20,14 @@ from pypdf import PdfReader
 from .ipc_parser import IPCParser, RegionRiskAssessment
 from .document_processor import DocumentProcessor
 from .domain_knowledge import DomainKnowledge
+from .config import (
+    MIN_RELEVANT_CHUNKS, MAX_CONTEXT_CHUNKS, CHUNK_SIZE,
+    SHOCK_CONFIDENCE_THRESHOLD, MAX_SHOCKS_TO_RETURN
+)
+from .exceptions import (
+    InsufficientDataError, VectorStoreError, RetrievalError,
+    DomainKnowledgeError
+)
 
 
 # Setup logging for missing information
@@ -94,7 +102,7 @@ class FEWSSystem:
         # Initialize
         self._initialize()
     
-    def _initialize(self):
+    def _initialize(self) -> None:
         """Initialize embeddings and LLM."""
         try:
             self.embeddings = OllamaEmbeddings(model=self.model_name)
@@ -104,6 +112,111 @@ class FEWSSystem:
             print(f"⚠️  Error initializing LLM: {e}")
             print("   Make sure Ollama is running: ollama serve")
             print(f"   And model is available: ollama pull {self.model_name}")
+    
+    def _retrieve_context(
+        self,
+        query: str,
+        vectorstore: Optional[Chroma],
+        k: int = MAX_CONTEXT_CHUNKS,
+        min_chunks: int = MIN_RELEVANT_CHUNKS
+    ) -> Tuple[List[Document], str]:
+        """
+        Unified context retrieval with deduplication and validation.
+        
+        Args:
+            query: Search query
+            vectorstore: Chroma vector store to search
+            k: Maximum number of chunks to retrieve
+            min_chunks: Minimum chunks required for sufficiency
+        
+        Returns:
+            Tuple of (documents, context_string)
+        
+        Raises:
+            VectorStoreError: If vector store is None
+            RetrievalError: If retrieval fails
+            InsufficientDataError: If fewer than min_chunks retrieved
+        """
+        if vectorstore is None:
+            raise VectorStoreError("Vector store is not initialized")
+        
+        try:
+            retriever = vectorstore.as_retriever(search_kwargs={"k": k})
+            docs = retriever.get_relevant_documents(query)
+        except Exception as e:
+            raise RetrievalError(f"Failed to retrieve documents: {e}")
+        
+        # Check minimum chunks requirement
+        if len(docs) < min_chunks:
+            raise InsufficientDataError(
+                f"Insufficient context retrieved: {len(docs)} chunks (minimum {min_chunks} required)"
+            )
+        
+        # Deduplicate by content hash (first 100 chars as hash)
+        seen = set()
+        unique_docs = []
+        for doc in docs:
+            content_hash = hash(doc.page_content[:100])
+            if content_hash not in seen:
+                seen.add(content_hash)
+                unique_docs.append(doc)
+        
+        # Build context (normalized chunk size)
+        context = "\n\n".join([
+            f"[Source: {doc.metadata.get('source', 'Unknown')}]\n{doc.page_content[:CHUNK_SIZE]}"
+            for doc in unique_docs
+        ])
+        
+        return unique_docs, context
+    
+    def _detect_validated_shocks(
+        self,
+        context: str,
+        region: str,
+        assessment: RegionRiskAssessment
+    ) -> List[str]:
+        """
+        Detect shocks using structured keyword matching.
+        Returns ONLY shocks found in shock_ontology.json.
+        
+        Args:
+            context: Retrieved text context
+            region: Region name
+            assessment: IPC risk assessment
+        
+        Returns:
+            List of validated shock driver names
+        """
+        # Run keyword detection on context
+        detected = self.domain_knowledge.detect_shocks(context)
+        
+        # Filter by confidence threshold
+        validated_shocks = [
+            shock_type for shock_type, confidence in detected
+            if confidence >= SHOCK_CONFIDENCE_THRESHOLD
+        ][:MAX_SHOCKS_TO_RETURN]
+        
+        # Map to driver names
+        shock_to_driver = {
+            "drought": "Drought/Rainfall deficit",
+            "conflict": "Conflict and insecurity",
+            "displacement": "Displacement",
+            "price_increase": "Price increases",
+            "crop_pests": "Crop failure",
+            "livestock_mortality": "Livestock losses",
+            "market_disruption": "Market disruption",
+            "humanitarian_access_constraints": "Humanitarian access constraints",
+            "flooding": "Flooding",
+            "macroeconomic_shocks": "Macroeconomic shocks"
+        }
+        
+        drivers = [
+            shock_to_driver.get(s, s)
+            for s in validated_shocks
+            if s in shock_to_driver
+        ]
+        
+        return drivers
     
     def setup_vector_stores(self, force_recreate: bool = False):
         """
@@ -403,20 +516,24 @@ class FEWSSystem:
             }
         
         try:
-            # Retrieve more chunks for better context (increased from 5 to 10)
-            retriever = self.reports_vectorstore.as_retriever(search_kwargs={"k": 10})
-            docs = retriever.get_relevant_documents(query)
-            
-            if not docs or len(docs) == 0:
+            # Use unified retrieval function with sufficiency check
+            try:
+                docs, context = self._retrieve_context(
+                    query=query,
+                    vectorstore=self.reports_vectorstore,
+                    k=MAX_CONTEXT_CHUNKS,
+                    min_chunks=MIN_RELEVANT_CHUNKS
+                )
+            except InsufficientDataError as e:
                 explanation = (
                     f"Region {region} has IPC Phase {assessment.current_phase}, "
                     f"indicating {'Emergency' if assessment.current_phase >= 4 else 'Crisis' if assessment.current_phase >= 3 else 'Stressed'} conditions. "
-                    f"However, I could not find specific information in the situation reports "
-                    f"about what is causing the food insecurity in this region."
+                    f"However, insufficient context was retrieved from situation reports "
+                    f"({str(e)}). Cannot produce an evidence-based explanation."
                 )
                 missing_info_logger.warning(
                     f"Region: {region} | IPC Phase: {assessment.current_phase} | "
-                    f"Issue: No relevant information found in situation reports"
+                    f"Issue: {str(e)}"
                 )
                 return {
                     "region": region,
@@ -426,187 +543,158 @@ class FEWSSystem:
                     "data_quality": "insufficient",
                     "ipc_phase": assessment.current_phase
                 }
+            except (VectorStoreError, RetrievalError) as e:
+                explanation = f"Error accessing situation reports: {str(e)}"
+                missing_info_logger.error(f"Region: {region} | Error: {str(e)}")
+                return {
+                    "region": region,
+                    "explanation": explanation,
+                    "drivers": [],
+                    "sources": [],
+                    "data_quality": "error",
+                    "ipc_phase": assessment.current_phase
+                }
             
-            # Build context from retrieved documents (increased chunk size for better context)
-            context = "\n\n".join([
-                f"[Source: {doc.metadata.get('source', 'Unknown')}]\n{doc.page_content[:800]}"
-                for doc in docs
-            ])
+            # Detect validated shocks BEFORE prompting LLM
+            validated_drivers = self._detect_validated_shocks(context, region, assessment)
             
-            # Detect shocks using domain knowledge
+            # Get shock types for domain context
             detected_shocks = self.domain_knowledge.detect_shocks(context)
-            shock_types = [shock[0] for shock in detected_shocks[:5]]  # Top 5 shocks
+            shock_types = [shock[0] for shock in detected_shocks[:MAX_SHOCKS_TO_RETURN]]
             
-            # Build domain knowledge context for prompt
+            # Build domain knowledge context for prompt (MANDATORY - LLM cannot infer these)
             domain_context = ""
             if livelihood_info:
-                domain_context += f"\nLIVELIHOOD SYSTEM (from domain knowledge): {livelihood_info.livelihood_system} ({livelihood_info.elevation_category})\n"
-            if rainfall_info:
-                domain_context += f"RAINFALL SEASON (from domain knowledge): {rainfall_info.dominant_season} ({rainfall_info.season_months})\n"
-            if shock_types:
-                domain_context += f"DETECTED SHOCKS (from domain knowledge): {', '.join(shock_types)}\n"
+                domain_context += f"\nLIVELIHOOD SYSTEM (MANDATORY - from domain knowledge CSV): {livelihood_info.livelihood_system} ({livelihood_info.elevation_category})\n"
+                domain_context += f"  → You MUST use this livelihood system. Do NOT infer or guess a different one.\n"
+            else:
+                domain_context += f"\nLIVELIHOOD SYSTEM: Not found in domain knowledge. Use 'Unknown livelihood system'.\n"
+                domain_context += f"  → Do NOT infer or guess a livelihood system.\n"
             
-            # Use LLM to extract drivers with new IPC-aligned prompt
+            if rainfall_info:
+                domain_context += f"\nRAINFALL SEASON (MANDATORY - from domain knowledge CSV): {rainfall_info.dominant_season} ({rainfall_info.season_months})\n"
+                domain_context += f"  → You MUST use this season name when discussing rainfall. Do NOT use other season names.\n"
+            else:
+                domain_context += f"\nRAINFALL SEASON: Not found in domain knowledge.\n"
+                domain_context += f"  → Use neutral language: 'below-average rainfall' or 'rainfall anomalies'. Do NOT name specific seasons.\n"
+            
+            if validated_drivers:
+                domain_context += f"\nVALIDATED SHOCKS (MANDATORY - from structured detection): {', '.join(validated_drivers)}\n"
+                domain_context += f"  → You MUST only discuss these shocks. Do NOT add shocks not in this list.\n"
+            else:
+                domain_context += f"\nVALIDATED SHOCKS: None detected via structured keyword matching.\n"
+                domain_context += f"  → If context mentions shocks, use only those explicitly stated. Do NOT infer additional shocks.\n"
+            
+            # Use LLM to extract drivers with strict IPC-aligned prompt
             prompt = PromptTemplate(
-                input_variables=["region", "ipc_phase", "context", "domain_context"],
+                input_variables=["region", "ipc_phase", "context", "domain_context", "validated_shocks"],
                 template="""You are a senior Integrated Food Security Phase Classification (IPC) analyst. 
 Your task is to explain WHY {region} is experiencing IPC Phase {ipc_phase} food insecurity.
 
-Use ONLY the information inside the situation report, but apply IPC-compatible 
-regional and livelihood inference when the woreda is not directly mentioned.
+CRITICAL CONSTRAINT: You MUST use ONLY the information provided in:
+1. DOMAIN KNOWLEDGE CONTEXT (below) - these are MANDATORY lookups from CSV/JSON files
+2. CONTEXT FROM SITUATION REPORTS (below) - retrieved text from vector database
+
+You MUST NOT infer, guess, or invent:
+- Livelihood systems (MUST use domain knowledge CSV lookup)
+- Rainfall seasons (MUST use domain knowledge CSV lookup)
+- Shocks (MUST use only validated shocks from structured detection)
 
 ===========================================================
-LIVELIHOOD MAPPING RULE (MANDATORY)
-===========================================================
-When inferring livelihood systems, apply the following rules:
-
-- Tigray highlands, Amhara highlands, Oromia highlands → 
-  RAINFED CROPPING livelihood system (cereal-based, mixed crop-livestock)
-- Somali Region, Afar, Borena, South Omo, most lowland arid areas → 
-  PASTORAL or AGROPASTORAL systems (livestock-dominant)
-- SNNPR mid-altitude zones → 
-  MIXED or ROOT-CROP/ENSETE systems (crop-dominant with some livestock)
-- Rift Valley and dry mid-altitudes → 
-  AGROPASTORAL (crop + livestock, market-integrated)
-- If elevation is > 2,000m or clearly "highland" → 
-  treat as RAINFED CROPPING, not pastoral.
-
-Never assign a purely pastoral system to clearly highland cropping areas 
-like most of Tigray and North/Central Amhara.
-
-===========================================================
-RAINFALL SEASON MAPPING RULE (MANDATORY)
-===========================================================
-When discussing rainfall seasons, apply the following rules:
-
-- Never assign rainfall seasons (deyr/hageya, gu/genna, kiremt) unless:
-  (a) it is explicitly stated in the context, OR
-  (b) the season is typical for the region's geography.
-
-- Regional rainfall seasons:
-  • Tigray, Amhara, Oromia Highlands: KIREMT (June–September) is the dominant 
-    cropping season. Do NOT refer to deyr/hageya or gu/genna for these highland areas.
-  • Somali Region, southern Oromia, lowland pastoral/agropastoral zones:
-    • GU/GENNA: March–May
-    • DEYR/HAGEYA: October–December
-  • Afar: Kiremt is marginal; main shocks relate to erratic "Belg" pulses and 
-    dry-season water stress.
-
-- If a region's rainfall season is unclear, use neutral language:
-  "below-average rainfall," "rainfall anomalies," "seasonal failure," WITHOUT 
-  naming a specific season.
-
-===========================================================
-MANDATORY ANALYSIS FRAMEWORK (MUST FOLLOW THIS ORDER)
+CRITICAL CONSTRAINTS (MANDATORY)
 ===========================================================
 
-1. LIVELIHOOD SYSTEM IDENTIFICATION
-   - Identify the likely livelihood system (pastoral, agropastoral, cropping, mixed).
-   - Justify your choice using regional or zonal patterns from the context.
-   - Explain why this livelihood system matters for food access.
+1. LIVELIHOOD SYSTEM:
+   - You MUST use the livelihood system specified in DOMAIN KNOWLEDGE CONTEXT.
+   - If it says "Unknown livelihood system", state that explicitly.
+   - DO NOT infer or guess a livelihood system.
 
-2. RAINFALL SEASON CONTEXT
-   - When discussing rainfall shocks, apply the rainfall season mapping rules above.
-   - For highland cropping areas (Tigray, Amhara, Oromia highlands), refer to kiremt 
-     season if discussing seasonal rainfall.
-   - For southern/southeastern pastoral areas, refer to deyr/hageya or gu/genna as appropriate.
-   - If uncertain, use neutral language without naming specific seasons.
+2. RAINFALL SEASON:
+   - You MUST use the rainfall season specified in DOMAIN KNOWLEDGE CONTEXT.
+   - If it says to use neutral language, use "below-average rainfall" or "rainfall anomalies".
+   - DO NOT name seasons (kiremt, deyr/hageya, gu/genna) unless explicitly provided.
 
-3. SHOCK IDENTIFICATION (WHAT HAPPENED?)
-   Extract all relevant shocks from the context, including:
-   - rainfall anomalies / drought / flooding
-   - conflict and insecurity
-   - displacement
-   - market disruptions and price spikes
-   - crop failure
-   - livestock disease or mortality
-   - macroeconomic shocks
-   - humanitarian access constraints
-
-4. LIVELIHOOD IMPACT (HOW SHOCKS AFFECT FOOD/INCOME)
-   For each shock, explain:
-   - impact on agricultural production (crops, harvest timing, yields)
-   - impact on livestock body condition, births, milk, sales
-   - impact on labor markets and wages
-   - impact on market access, transport, supply chains
-   - changes in terms of trade and purchasing power
-
-5. FOOD ACCESS & CONSUMPTION GAPS
-   - Describe how the above impacts reduce the ability to access food.
-   - Identify reduced meal frequency, reduced dietary diversity, reliance on
-     negative coping, distress sales, early depletion of stocks, etc.
-
-6. NUTRITIONAL AND HEALTH OUTCOMES
-   - Identify references to increasing GAM/SAM, disease outbreaks, water stress,
-     or other factors increasing malnutrition.
-
-7. IPC PHASE ALIGNMENT
-   - Explicitly link the above evidence to IPC Phase {ipc_phase} outcomes:
-     Phase 3 → Crisis level: consumption gaps, livelihood protection deficits
-     Phase 4 → Emergency: extreme food deficits, acute malnutrition, asset collapse
-     Phase 5 → Catastrophe/Famine: near-complete food consumption failure
-
-8. LIMITATIONS
-   - If the context does not name {region}, clearly state:
-     "{region} is not directly mentioned; analysis is based on regional livelihood
-      profiles and contextual patterns in the report."
+3. SHOCKS:
+   - You MUST only discuss shocks listed in VALIDATED SHOCKS.
+   - DO NOT add shocks not in that list, even if context mentions them.
+   - If validated shocks list is empty, state "No validated shocks detected via structured keyword matching."
 
 ===========================================================
-FORMAT YOUR OUTPUT AS:
+MANDATORY ANALYSIS FRAMEWORK (MUST FOLLOW THIS EXACT ORDER)
+===========================================================
+
 A. Overview
-B. Livelihood System
-C. Shocks (with correct seasonal context)
-D. Livelihood Impacts
-E. Food Access and Consumption
-F. Nutrition & Health
-G. IPC Alignment
-H. Limitations
-===========================================================
+   - Brief summary of the situation
 
-DOMAIN KNOWLEDGE CONTEXT:
+B. Livelihood System
+   - State the livelihood system from DOMAIN KNOWLEDGE CONTEXT
+   - Explain why this system matters for food access
+   - DO NOT infer a different livelihood system
+
+C. Seasonal Calendar
+   - State the rainfall season from DOMAIN KNOWLEDGE CONTEXT
+   - If not provided, use neutral language without naming seasons
+   - DO NOT infer season names
+
+D. Shocks
+   - List ONLY the validated shocks from VALIDATED SHOCKS
+   - For each shock, cite evidence from CONTEXT FROM SITUATION REPORTS
+   - DO NOT add shocks not in the validated list
+
+E. Livelihood Impacts
+   - Explain how shocks affect agricultural production, livestock, labor markets, market access
+   - Base explanations on CONTEXT FROM SITUATION REPORTS
+
+F. Food Access and Consumption
+   - Describe consumption gaps, meal frequency, dietary diversity, coping strategies
+   - Base on CONTEXT FROM SITUATION REPORTS
+
+G. Nutrition & Health
+   - Identify GAM/SAM, disease outbreaks, water stress if mentioned in context
+   - If not mentioned, state "No specific nutrition/health data found"
+
+H. IPC Alignment
+   - Link evidence to IPC Phase {ipc_phase} outcomes
+   - Phase 3 → Crisis: consumption gaps, livelihood protection deficits
+   - Phase 4 → Emergency: extreme food deficits, acute malnutrition, asset collapse
+   - Phase 5 → Catastrophe/Famine: near-complete food consumption failure
+
+I. Limitations
+   - State if {region} is not directly mentioned in context
+   - State if domain knowledge is missing
+   - State if validated shocks list is empty
+   - DO NOT infer missing information
+
+===========================================================
+DOMAIN KNOWLEDGE CONTEXT (MANDATORY - DO NOT DEVIATE):
 {domain_context}
+
+VALIDATED SHOCKS (MANDATORY - ONLY DISCUSS THESE):
+{validated_shocks}
 
 CONTEXT FROM SITUATION REPORTS:
 {context}
 
-Produce a detailed, structured IPC-style analytical narrative.
+Produce a detailed, structured IPC-style analytical narrative following the exact format above.
 """
             )
             
             chain = prompt | self.llm
+            validated_shocks_str = ", ".join(validated_drivers) if validated_drivers else "None detected via structured keyword matching"
+            
             explanation = chain.invoke({
                 "region": region,
                 "ipc_phase": assessment.current_phase,
                 "domain_context": domain_context,
+                "validated_shocks": validated_shocks_str,
                 "context": context
             })
             
-            # Extract drivers using domain knowledge shock detection
-            explanation_lower = explanation.lower()  # Define early for use in data quality check
-            drivers = []
-            detected_shocks_full = self.domain_knowledge.detect_shocks(explanation)
+            # Use validated drivers (already detected before prompting)
+            explanation_lower = explanation.lower()
+            drivers = validated_drivers if validated_drivers else []
             
-            # Map detected shocks to driver names
-            shock_to_driver = {
-                "drought": "Drought/Rainfall deficit",
-                "conflict": "Conflict and insecurity",
-                "displacement": "Displacement",
-                "price_increase": "Price increases",
-                "crop_pests": "Crop failure",
-                "livestock_mortality": "Livestock losses",
-                "market_disruption": "Market disruption",
-                "humanitarian_access_constraints": "Humanitarian access constraints",
-                "flooding": "Flooding",
-                "macroeconomic_shocks": "Macroeconomic shocks"
-            }
-            
-            for shock_type, confidence in detected_shocks_full[:8]:  # Top 8 shocks
-                if shock_type in shock_to_driver:
-                    driver_name = shock_to_driver[shock_type]
-                    if driver_name not in drivers:
-                        drivers.append(driver_name)
-            
-            # Fallback: if no shocks detected, use keyword matching
+            # Fallback: if no validated shocks, try keyword matching on explanation
             if not drivers:
                 if "conflict" in explanation_lower or "violence" in explanation_lower or "insecurity" in explanation_lower:
                     drivers.append("Conflict and insecurity")
@@ -751,63 +839,48 @@ Produce a detailed, structured IPC-style analytical narrative.
             }
         
         try:
-            # Check if vector store has any documents
+            # Use unified retrieval function with sufficiency check
             try:
-                doc_count = self.interventions_vectorstore._collection.count()
-                if doc_count == 0:
-                    print(f"   ⚠️  WARNING: Intervention vector store is empty ({doc_count} chunks)")
-                    print(f"   Please regenerate vector stores: rm -rf chroma_db_interventions/ && restart")
-                    return {
-                        "region": region,
-                        "recommendations": (
-                            f"For {region} with IPC Phase {ipc_phase}, the intervention vector store "
-                            f"is empty. Please ensure intervention PDFs are processed and vector stores "
-                            f"are regenerated."
-                        ),
-                        "sources": [],
-                        "limitations": f"Vector store empty ({doc_count} chunks)"
-                    }
-            except:
-                pass  # If count fails, try retrieval anyway
+                docs, context = self._retrieve_context(
+                    query=query,
+                    vectorstore=self.interventions_vectorstore,
+                    k=MAX_CONTEXT_CHUNKS,
+                    min_chunks=MIN_RELEVANT_CHUNKS
+                )
+            except InsufficientDataError as e:
+                missing_info_logger.warning(
+                    f"Region: {region} | IPC Phase: {ipc_phase} | "
+                    f"Issue: {str(e)}"
+                )
+                return {
+                    "region": region,
+                    "recommendations": (
+                        f"For {region} with IPC Phase {ipc_phase}, insufficient context was retrieved "
+                        f"from intervention literature ({str(e)}). Cannot produce evidence-based recommendations."
+                    ),
+                    "sources": [],
+                    "limitations": str(e)
+                }
+            except (VectorStoreError, RetrievalError) as e:
+                missing_info_logger.error(f"Region: {region} | Error: {str(e)}")
+                return {
+                    "region": region,
+                    "recommendations": f"Error accessing intervention literature: {str(e)}",
+                    "sources": [],
+                    "limitations": str(e)
+                }
             
-            # Retrieve more chunks for better context (increased from 5 to 10)
-            retriever = self.interventions_vectorstore.as_retriever(search_kwargs={"k": 10})
-            docs = retriever.get_relevant_documents(query)
+            # Log retrieval success
+            unique_sources = list(set([doc.metadata.get('source', 'Unknown') for doc in docs]))
+            print(f"   🔍 Retrieved {len(docs)} chunks from {len(unique_sources)} document(s)")
+            if unique_sources:
+                print(f"   Sources: {unique_sources[:3]}")
             
-            print(f"   🔍 Retrieved {len(docs)} documents from intervention literature")
-            if len(docs) > 0:
-                print(f"   Sources: {[d.metadata.get('source', 'Unknown') for d in docs[:3]]}")
-            
-            if not docs or len(docs) == 0:
-                # Try a more generic query as fallback
-                print("   ⚠️  No documents with specific query, trying generic fallback...")
-                fallback_query = "emergency food security nutrition intervention Sphere WFP CMAM LEGS"
-                docs = retriever.get_relevant_documents(fallback_query)
-                print(f"   🔍 Fallback query retrieved {len(docs)} documents")
-                
-                if not docs or len(docs) == 0:
-                    return {
-                        "region": region,
-                        "recommendations": (
-                            f"For {region} with IPC Phase {ipc_phase}, I could not retrieve "
-                            f"any documents from the intervention literature. The vector store may be "
-                            f"empty or the query is not matching any content. Please check that "
-                            f"intervention PDFs were processed correctly."
-                        ),
-                        "sources": [],
-                        "limitations": "No documents retrieved from vector store"
-                    }
-            
-            # Build context (increased chunk size for better context)
-            context = "\n\n".join([
-                f"[Source: {doc.metadata.get('source', 'Unknown')}]\n{doc.page_content[:800]}"
-                for doc in docs
-            ])
-            
-            # Get structured intervention mappings from domain knowledge
+            # Get structured intervention mappings from domain knowledge (MANDATORY)
             intervention_mappings = {}
-            for driver in drivers:
-                # Map driver name back to shock type
+            missing_mappings = []
+            
+            if drivers:
                 driver_to_shock = {
                     "Drought/Rainfall deficit": "drought",
                     "Conflict and insecurity": "conflict",
@@ -820,21 +893,42 @@ Produce a detailed, structured IPC-style analytical narrative.
                     "Flooding": "flooding",
                     "Macroeconomic shocks": "macroeconomic_shocks"
                 }
-                shock_type = driver_to_shock.get(driver)
-                if shock_type:
-                    interventions = self.domain_knowledge.get_interventions_for_driver(shock_type)
-                    if interventions:
-                        intervention_mappings[driver] = interventions
+                
+                for driver in drivers:
+                    shock_type = driver_to_shock.get(driver)
+                    if shock_type:
+                        interventions = self.domain_knowledge.get_interventions_for_driver(shock_type)
+                        if interventions:
+                            intervention_mappings[driver] = interventions
+                        else:
+                            missing_mappings.append(driver)
+                            missing_info_logger.warning(
+                                f"Region: {region} | Driver: {driver} | "
+                                f"Issue: No intervention mapping found in domain knowledge"
+                            )
+                    else:
+                        missing_mappings.append(driver)
+                        missing_info_logger.warning(
+                            f"Region: {region} | Driver: {driver} | "
+                            f"Issue: Driver not mapped to shock type"
+                        )
             
-            # Build intervention context
+            # Build intervention context (MANDATORY - LLM must use these mappings)
             intervention_context = ""
             if intervention_mappings:
-                intervention_context = "\nSTRUCTURED INTERVENTION MAPPINGS (from domain knowledge):\n"
+                intervention_context = "\nSTRUCTURED INTERVENTION MAPPINGS (MANDATORY - from domain knowledge JSON):\n"
+                intervention_context += "You MUST use these mappings to guide your recommendations.\n\n"
                 for driver, interventions in intervention_mappings.items():
                     intervention_context += f"\n{driver}:\n"
                     for category, items in interventions.items():
                         if category != "references" and items:
                             intervention_context += f"  {category}: {', '.join(items[:3])}\n"
+                    if "references" in interventions:
+                        intervention_context += f"  References: {', '.join(interventions['references'][:2])}\n"
+            
+            if missing_mappings:
+                intervention_context += f"\n⚠️  MISSING MAPPINGS: The following drivers have no structured intervention mapping: {', '.join(missing_mappings)}\n"
+                intervention_context += "  → Use general best-practice guidance from intervention literature for these drivers.\n"
             
             # Use LLM to generate recommendations with new driver-linked prompt
             ipc_phase_desc = 'Emergency' if ipc_phase >= 4 else 'Crisis' if ipc_phase >= 3 else 'Stressed'
