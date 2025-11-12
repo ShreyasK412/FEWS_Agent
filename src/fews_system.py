@@ -20,6 +20,10 @@ from pypdf import PdfReader
 from .ipc_parser import IPCParser, RegionRiskAssessment
 from .document_processor import DocumentProcessor
 from .domain_knowledge import DomainKnowledge
+from .fews_knowledge_library import (
+    get_seasonal_calendar, get_livelihood_impacts, get_ipc_phase_definition,
+    get_driver_metadata, DRIVER_SHOCK_MAPPING
+)
 from .config import (
     MIN_RELEVANT_CHUNKS, MAX_CONTEXT_CHUNKS, CHUNK_SIZE,
     SHOCK_CONFIDENCE_THRESHOLD, MAX_SHOCKS_TO_RETURN
@@ -889,9 +893,9 @@ CONTEXT FROM SITUATION REPORTS:
 
 Produce a structured, contradiction-free explanation.
 """
-        )
-        
-        chain = prompt | self.llm
+            )
+            
+            chain = prompt | self.llm
         
         # Get rainfall clarification
         rainfall_clarification = ""
@@ -903,9 +907,9 @@ Produce a structured, contradiction-free explanation.
         zone_name_str = zone_name if zone_name else ""
         geographic_context = assessment.geographic_full_name or f"{region}, {zone_name_str}, {admin_region}, Ethiopia"
 
-        explanation = chain.invoke({
-            "region": region,
-            "ipc_phase": assessment.current_phase,
+            explanation = chain.invoke({
+                "region": region,
+                "ipc_phase": assessment.current_phase,
             "shocks_formatted": shocks_formatted,
             "context": context,
             "livelihood_system": livelihood_system_for_prompt,
@@ -917,29 +921,29 @@ Produce a structured, contradiction-free explanation.
         })
         
         # Use validated drivers (already detected before prompting)
-        explanation_lower = explanation.lower()
+            explanation_lower = explanation.lower()
         drivers = list(validated_drivers)
-        
-        # Check if explanation indicates insufficient data
-        data_quality = "sufficient"
+            
+            # Check if explanation indicates insufficient data
+            data_quality = "sufficient"
         if not validated_shock_types:
             data_quality = "insufficient_shock_evidence"
-        if "cannot find" in explanation_lower or "not find" in explanation_lower or "insufficient" in explanation_lower:
-            data_quality = "insufficient"
-            missing_info_logger.warning(
-                f"Region: {region} | IPC Phase: {assessment.current_phase} | "
-                f"Issue: Insufficient information in situation reports"
-            )
-        
-        sources = [doc.metadata.get('source', 'Unknown') for doc in docs]
-        
-        return {
-            "region": region,
-            "explanation": explanation,
+            if "cannot find" in explanation_lower or "not find" in explanation_lower or "insufficient" in explanation_lower:
+                data_quality = "insufficient"
+                missing_info_logger.warning(
+                    f"Region: {region} | IPC Phase: {assessment.current_phase} | "
+                    f"Issue: Insufficient information in situation reports"
+                )
+            
+            sources = [doc.metadata.get('source', 'Unknown') for doc in docs]
+            
+            return {
+                "region": region,
+                "explanation": explanation,
             "drivers": drivers if drivers else [],
-            "sources": list(set(sources)),
-            "data_quality": data_quality,
-            "ipc_phase": assessment.current_phase,
+                "sources": list(set(sources)),
+                "data_quality": data_quality,
+                "ipc_phase": assessment.current_phase,
             "retrieved_chunks": len(docs),
             "shocks_detailed": detailed_shocks
         }
@@ -1350,21 +1354,21 @@ Produce a structured, contradiction-free explanation.
                     f"Region: {region} | IPC Phase: {ipc_phase} | "
                     f"Issue: {str(e)}"
                 )
-                return {
-                    "region": region,
-                    "recommendations": (
+                    return {
+                        "region": region,
+                        "recommendations": (
                         f"For {region} with IPC Phase {ipc_phase}, insufficient context was retrieved "
                         f"from intervention literature ({str(e)}). Cannot produce evidence-based recommendations."
-                    ),
-                    "sources": [],
+                        ),
+                        "sources": [],
                     "limitations": str(e)
                 }
             except (VectorStoreError, RetrievalError) as e:
                 missing_info_logger.error(f"Region: {region} | Error: {str(e)}")
-                return {
-                    "region": region,
+                    return {
+                        "region": region,
                     "recommendations": f"Error accessing intervention literature: {str(e)}",
-                    "sources": [],
+                        "sources": [],
                     "limitations": str(e)
                 }
             
