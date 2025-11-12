@@ -528,13 +528,26 @@ class FEWSSystem:
         if "Afar" in assessment.geographic_full_name:
             region_variations.extend(["Afar", "pastoral", "northeastern Ethiopia"])
         
-        query = f"""
-        Food security situation: {', '.join(region_variations[:5])}, Ethiopia.
-        Current IPC phase: {assessment.current_phase}
-        Livelihood system, shocks, drivers of food insecurity.
-        Look for: conflict, drought, rainfall anomalies, price increases, displacement, 
-        market disruptions, crop failures, livestock losses, livelihood impacts.
-        """
+        # Multi-query RAG retrieval strategy for better coverage
+        queries = []
+        
+        # Query 1: Geographic query with region hierarchy
+        geographic_query = f"{', '.join(region_variations[:3])} Ethiopia food security"
+        queries.append(("geographic", geographic_query))
+        
+        # Query 2: Livelihood-specific query
+        if livelihood_info:
+            livelihood_query = f"{livelihood_info.livelihood_system} {region_name} Ethiopia current conditions"
+            queries.append(("livelihood", livelihood_query))
+        
+        # Query 3: Seasonal query
+        if rainfall_info:
+            seasonal_query = f"{rainfall_info.dominant_season} {region_name} Ethiopia 2024 2025"
+            queries.append(("seasonal", seasonal_query))
+        
+        # Query 4: IPC phase-specific query
+        phase_query = f"IPC Phase {assessment.current_phase} {region_name} Ethiopia"
+        queries.append(("phase", phase_query))
         
         # Retrieve relevant documents
         if self.reports_vectorstore is None:
@@ -556,44 +569,70 @@ class FEWSSystem:
             }
         
         try:
-            # Use unified retrieval function with sufficiency check
-            try:
-                docs, context = self._retrieve_context(
-                    query=query,
-                    vectorstore=self.reports_vectorstore,
-                    k=MAX_CONTEXT_CHUNKS,
-                    min_chunks=MIN_RELEVANT_CHUNKS
+            # Multi-query retrieval: retrieve from each query and deduplicate
+            all_docs = []
+            for query_type, query in queries:
+                try:
+                    docs, _ = self._retrieve_context(
+                        query=query,
+                        vectorstore=self.reports_vectorstore,
+                        k=3,  # Top 3 from each query
+                        min_chunks=0  # Don't enforce minimum for individual queries
+                    )
+                    all_docs.extend(docs)
+                except Exception as e:
+                    # Continue with other queries even if one fails
+                    pass
+            
+            # Deduplicate by content hash
+            seen_hashes = set()
+            unique_docs = []
+            for doc in all_docs:
+                content_hash = hash(doc.page_content[:100])
+                if content_hash not in seen_hashes:
+                    seen_hashes.add(content_hash)
+                    unique_docs.append(doc)
+            
+            # Limit to top chunks and build context
+            unique_docs = unique_docs[:MAX_CONTEXT_CHUNKS]
+            context = "\n\n".join([doc.page_content for doc in unique_docs])
+            docs = unique_docs
+            
+            # Check sufficiency
+            if len(docs) < MIN_RELEVANT_CHUNKS:
+                raise InsufficientDataError(
+                    f"Retrieved only {len(docs)} chunks, minimum required: {MIN_RELEVANT_CHUNKS}"
                 )
-            except InsufficientDataError as e:
-                explanation = (
-                    f"Region {region} has IPC Phase {assessment.current_phase}, "
-                    f"indicating {'Emergency' if assessment.current_phase >= 4 else 'Crisis' if assessment.current_phase >= 3 else 'Stressed'} conditions. "
-                    f"However, insufficient context was retrieved from situation reports "
-                    f"({str(e)}). Cannot produce an evidence-based explanation."
-                )
-                missing_info_logger.warning(
-                    f"Region: {region} | IPC Phase: {assessment.current_phase} | "
-                    f"Issue: {str(e)}"
-                )
-                return {
-                    "region": region,
-                    "explanation": explanation,
-                    "drivers": [],
-                    "sources": [],
-                    "data_quality": "insufficient",
-                    "ipc_phase": assessment.current_phase
-                }
-            except (VectorStoreError, RetrievalError) as e:
-                explanation = f"Error accessing situation reports: {str(e)}"
-                missing_info_logger.error(f"Region: {region} | Error: {str(e)}")
-                return {
-                    "region": region,
-                    "explanation": explanation,
-                    "drivers": [],
-                    "sources": [],
-                    "data_quality": "error",
-                    "ipc_phase": assessment.current_phase
-                }
+        except InsufficientDataError as e:
+            explanation = (
+                f"Region {region} has IPC Phase {assessment.current_phase}, "
+                f"indicating {'Emergency' if assessment.current_phase >= 4 else 'Crisis' if assessment.current_phase >= 3 else 'Stressed'} conditions. "
+                f"However, insufficient context was retrieved from situation reports "
+                f"({str(e)}). Cannot produce an evidence-based explanation."
+            )
+            missing_info_logger.warning(
+                f"Region: {region} | IPC Phase: {assessment.current_phase} | "
+                f"Issue: {str(e)}"
+            )
+            return {
+                "region": region,
+                "explanation": explanation,
+                "drivers": [],
+                "sources": [],
+                "data_quality": "insufficient",
+                "ipc_phase": assessment.current_phase
+            }
+        except (VectorStoreError, RetrievalError) as e:
+            explanation = f"Error accessing situation reports: {str(e)}"
+            missing_info_logger.error(f"Region: {region} | Error: {str(e)}")
+            return {
+                "region": region,
+                "explanation": explanation,
+                "drivers": [],
+                "sources": [],
+                "data_quality": "error",
+                "ipc_phase": assessment.current_phase
+            }
             
             # Detect validated shocks BEFORE prompting LLM (zone-specific detection)
             livelihood_zone_for_detection = livelihood_info.livelihood_system if livelihood_info else "unknown"
