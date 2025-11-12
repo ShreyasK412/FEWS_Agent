@@ -1027,6 +1027,7 @@ Produce a structured, contradiction-free explanation.
             content_lower = doc.page_content.lower()
             is_relevant = True
             exclusion_reason = None
+            has_include = False  # Initialize before conditionals
 
             # Check for STRONG exclusion keywords (definite wrong region)
             strong_exclude_keywords = [
