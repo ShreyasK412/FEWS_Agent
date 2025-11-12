@@ -826,10 +826,10 @@ Produce a structured, contradiction-free explanation.
         if rainfall_info and rainfall_info.clarification:
             rainfall_clarification = f"CLARIFICATION: {rainfall_info.clarification}"
 
-        # Get geographic context for prompt
+        # Get geographic context for prompt (zone_name already extracted above)
         admin_region = assessment.region or ""
-        zone_name = assessment.zone or ""
-        geographic_context = assessment.geographic_full_name or f"{region}, {zone_name}, {admin_region}, Ethiopia"
+        zone_name_str = zone_name if zone_name else ""
+        geographic_context = assessment.geographic_full_name or f"{region}, {zone_name_str}, {admin_region}, Ethiopia"
 
         explanation = chain.invoke({
                 "region": region,
@@ -840,7 +840,7 @@ Produce a structured, contradiction-free explanation.
                 "rainfall_season": rainfall_season_for_prompt,
                 "rainfall_clarification": rainfall_clarification,
                 "admin_region": admin_region,
-                "zone_name": zone_name,
+                "zone_name": zone_name_str,
                 "geographic_context": geographic_context
         })
         
