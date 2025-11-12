@@ -28,6 +28,7 @@ class RainfallSeasonInfo:
     secondary_season: Optional[str]
     season_months: str
     notes: str
+    clarification: Optional[str] = None
 
 
 class DomainKnowledge:
@@ -356,7 +357,8 @@ class DomainKnowledge:
                         dominant_season=row['dominant_season'],
                         secondary_season=row.get('secondary_season'),
                         season_months=row['season_months'],
-                        notes=row.get('notes', '')
+                        notes=row.get('notes', ''),
+                        clarification=row.get('clarification')
                     )
             
             # 2. Region-only match
@@ -373,7 +375,8 @@ class DomainKnowledge:
                         dominant_season=row['dominant_season'],
                         secondary_season=row.get('secondary_season'),
                         season_months=row['season_months'],
-                        notes=row.get('notes', '')
+                        notes=row.get('notes', ''),
+                        clarification=row.get('clarification')
                     )
             
             # 3. Admin fallback using zone matches
@@ -389,7 +392,8 @@ class DomainKnowledge:
                         dominant_season=row['dominant_season'],
                         secondary_season=row.get('secondary_season'),
                         season_months=row['season_months'],
-                        notes=row.get('notes', '')
+                        notes=row.get('notes', ''),
+                        clarification=row.get('clarification')
                     )
         
         # 4. Regional fallback map

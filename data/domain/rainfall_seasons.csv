@@ -1,15 +1,15 @@
-region,zone,dominant_season,secondary_season,season_months,notes
-Tigray,all,Kiremt,Belg,Jun-Sep,Main cropping season June-September
-Amhara,all,Kiremt,Belg,Jun-Sep,Main cropping season June-September
-Oromia,highland zones,Kiremt,Belg,Jun-Sep,Main cropping season June-September
-Oromia,midland zones,Kiremt,Belg,Jun-Sep,Main cropping season June-September
-Oromia,Borena,Gu/Genna,Deyr/Hageya,Mar-May;Oct-Dec,Pastoral seasons
-Oromia,West Guji,Gu/Genna,Deyr/Hageya,Mar-May;Oct-Dec,Pastoral seasons
-Oromia,East Guji,Gu/Genna,Deyr/Hageya,Mar-May;Oct-Dec,Pastoral seasons
-Somali,all,Gu/Genna,Deyr/Hageya,Mar-May;Oct-Dec,Pastoral seasons
-Afar,all,Belg pulses,none,Mar-May,Erratic rainfall pulses
-SNNPR,highland zones,Kiremt,Belg,Jun-Sep,Main cropping season June-September
-SNNPR,midland zones,Kiremt,Belg,Jun-Sep,Main cropping season June-September
-SNNPR,South Omo,Gu/Genna,Deyr/Hageya,Mar-May;Oct-Dec,Pastoral seasons
-SNNPR,lowland zones,Gu/Genna,Deyr/Hageya,Mar-May;Oct-Dec,Pastoral seasons
+region,zone,dominant_season,secondary_season,season_months,notes,clarification
+Tigray,all,Kiremt,Belg,Jun-Sep,Main cropping season June-September,Kiremt (Jun-Sep) is the MAIN RAINY season = growing season = lean season. Meher harvest Oct-Jan. Belg (Feb-May) supplementary rains. DO NOT describe as dry season.
+Amhara,all,Kiremt,Belg,Jun-Sep,Main cropping season June-September,Kiremt (Jun-Sep) is the MAIN RAINY season = growing season = lean season. Meher harvest Oct-Jan. Belg (Feb-May) supplementary rains. DO NOT describe as dry season.
+Oromia,highland zones,Kiremt,Belg,Jun-Sep,Main cropping season June-September,Kiremt (Jun-Sep) is the MAIN RAINY season = growing season = lean season. Meher harvest Oct-Jan. Belg (Feb-May) supplementary rains. DO NOT describe as dry season.
+Oromia,midland zones,Kiremt,Belg,Jun-Sep,Main cropping season June-September,Kiremt (Jun-Sep) is the MAIN RAINY season = growing season = lean season. Meher harvest Oct-Jan. Belg (Feb-May) supplementary rains. DO NOT describe as dry season.
+Oromia,Borena,Gu/Genna,Deyr/Hageya,Mar-May;Oct-Dec,Pastoral seasons,Gu/Genna (Mar-May) and Deyr/Hageya (Oct-Dec) are pastoral rainfall seasons. DO NOT apply to highland cropping zones.
+Oromia,West Guji,Gu/Genna,Deyr/Hageya,Mar-May;Oct-Dec,Pastoral seasons,Gu/Genna (Mar-May) and Deyr/Hageya (Oct-Dec) are pastoral rainfall seasons. DO NOT apply to highland cropping zones.
+Oromia,East Guji,Gu/Genna,Deyr/Hageya,Mar-May;Oct-Dec,Pastoral seasons,Gu/Genna (Mar-May) and Deyr/Hageya (Oct-Dec) are pastoral rainfall seasons. DO NOT apply to highland cropping zones.
+Somali,all,Gu/Genna,Deyr/Hageya,Mar-May;Oct-Dec,Pastoral seasons,Gu/Genna (Mar-May) and Deyr/Hageya (Oct-Dec) are pastoral rainfall seasons. DO NOT apply to highland cropping zones.
+Afar,all,Belg pulses,none,Mar-May,Erratic rainfall pulses,Belg pulses (Mar-May) are erratic rainfall. DO NOT confuse with belg supplementary rains in highland zones.
+SNNPR,highland zones,Kiremt,Belg,Jun-Sep,Main cropping season June-September,Kiremt (Jun-Sep) is the MAIN RAINY season = growing season = lean season. Meher harvest Oct-Jan. Belg (Feb-May) supplementary rains. DO NOT describe as dry season.
+SNNPR,midland zones,Kiremt,Belg,Jun-Sep,Main cropping season June-September,Kiremt (Jun-Sep) is the MAIN RAINY season = growing season = lean season. Meher harvest Oct-Jan. Belg (Feb-May) supplementary rains. DO NOT describe as dry season.
+SNNPR,South Omo,Gu/Genna,Deyr/Hageya,Mar-May;Oct-Dec,Pastoral seasons,Gu/Genna (Mar-May) and Deyr/Hageya (Oct-Dec) are pastoral rainfall seasons. DO NOT apply to highland cropping zones.
+SNNPR,lowland zones,Gu/Genna,Deyr/Hageya,Mar-May;Oct-Dec,Pastoral seasons,Gu/Genna (Mar-May) and Deyr/Hageya (Oct-Dec) are pastoral rainfall seasons. DO NOT apply to highland cropping zones.
 

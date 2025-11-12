@@ -594,11 +594,15 @@ class FEWSSystem:
                 if content_hash not in seen_hashes:
                     seen_hashes.add(content_hash)
                     unique_docs.append(doc)
-            
+
+            # Geographic filtering: Remove content about wrong regions
+            admin_region = assessment.region_name or assessment.region or ""
+            filtered_docs = self._filter_chunks_by_geography(unique_docs, admin_region)
+
             # Limit to top chunks and build context
-            unique_docs = unique_docs[:MAX_CONTEXT_CHUNKS]
-            context = "\n\n".join([doc.page_content for doc in unique_docs])
-            docs = unique_docs
+            filtered_docs = filtered_docs[:MAX_CONTEXT_CHUNKS]
+            context = "\n\n".join([doc.page_content for doc in filtered_docs])
+            docs = filtered_docs
             
             # Check sufficiency
             if len(docs) < MIN_RELEVANT_CHUNKS:
@@ -639,13 +643,20 @@ class FEWSSystem:
         # Detect validated shocks BEFORE prompting LLM (zone-specific detection)
         livelihood_zone_for_detection = livelihood_info.livelihood_system if livelihood_info else "unknown"
         validated_shock_types, validated_drivers, shock_details = self._detect_validated_shocks(
-                context, region, assessment, livelihood_zone_for_detection
+            context, region, assessment, livelihood_zone_for_detection
         )
+
+        # Validate shocks by geography (remove shocks about wrong regions)
+        admin_region = assessment.region_name or assessment.region or ""
+        validated_shock_types, validated_drivers = self._validate_shocks_geography(
+            validated_shock_types, validated_drivers, shock_details, region, admin_region
+        )
+
         if not validated_shock_types:
-                missing_info_logger.info(
-                    f"Region: {region} | IPC Phase: {assessment.current_phase} | "
-                    f"Notice: No validated shocks detected via structured keyword matching (zone: {livelihood_zone_for_detection})."
-                )
+            missing_info_logger.info(
+                f"Region: {region} | IPC Phase: {assessment.current_phase} | "
+                f"Notice: No validated shocks detected via structured keyword matching (zone: {livelihood_zone_for_detection})."
+            )
         
         # Build domain knowledge context for prompt (reference only)
         domain_context_parts: List[str] = []
@@ -702,22 +713,31 @@ B. Livelihood System
 Use EXACTLY the livelihood system passed in: {livelihood_system}.  
 Explain why this livelihood is sensitive to shocks.
 
-C. Seasonal Calendar  
-Use EXACTLY the rainfall season passed in: {rainfall_season}.  
-Explain how that season affects production and food access.
+C. Seasonal Calendar
+Use EXACTLY the rainfall season passed in: {rainfall_season}.
+{rainfall_clarification}
+
+CRITICAL SEASONAL GUARDS:
+- If season is KIREMT: This is the MAIN RAINY season = growing season = lean season when food stocks are depleted. DO NOT describe as "dry season" or "secondary dry season".
+- If season is GU/GENNA or DEYR/HAGEYA: These are PASTORAL seasons. DO NOT apply to highland cropping zones.
+- Focus on crop production, harvest timing, and food stock depletion - NOT livestock/milk/pasture impacts.
 
 D. Shocks  
 List ONLY the validated shocks: {validated_shocks}.  
 Do NOT infer or hallucinate shocks not included in the list.
 
-E. Livelihood Impacts  
+E. Livelihood Impacts
 For each validated shock, explain impacts on:
-- production  
-- livestock  
-- labor markets  
-- market access  
-- household purchasing power  
-Never hallucinate impacts unrelated to validated shocks.
+- production (crops, harvest timing, yields)
+- labor markets (wage rates, migration opportunities)
+- market access (roads, transport, commodity prices)
+- household purchasing power (income vs. inflation)
+- food stocks (own production availability)
+
+CRITICAL LIVELIHOOD GUARDS:
+- If livelihood is HIGHLAND CROPPING: Focus ONLY on crop production, agricultural labor, food stocks, and market access. DO NOT mention livestock, milk production, pasture conditions, or animal health.
+- If livelihood is PASTORAL: Then livestock impacts are relevant. Otherwise, they are NOT.
+- Never hallucinate impacts unrelated to validated shocks.
 
 F. Food Access & Consumption  
 Explain the consequences: consumption gaps, coping, market stress, etc.  
@@ -751,13 +771,19 @@ Produce a structured, contradiction-free explanation.
         else:
                 validated_shocks_str = "None detected via structured keyword matching"
         
+        # Get rainfall clarification
+        rainfall_clarification = ""
+        if rainfall_info and rainfall_info.clarification:
+            rainfall_clarification = f"CLARIFICATION: {rainfall_info.clarification}"
+
         explanation = chain.invoke({
                 "region": region,
                 "ipc_phase": assessment.current_phase,
                 "validated_shocks": validated_shocks_str,
                 "context": context,
                 "livelihood_system": livelihood_system_for_prompt,
-                "rainfall_season": rainfall_season_for_prompt
+                "rainfall_season": rainfall_season_for_prompt,
+                "rainfall_clarification": rainfall_clarification
         })
         
         # Use validated drivers (already detected before prompting)
@@ -786,7 +812,124 @@ Produce a structured, contradiction-free explanation.
             "ipc_phase": assessment.current_phase,
             "retrieved_chunks": len(docs)
         }
-    
+
+    def _filter_chunks_by_geography(
+        self,
+        docs: List[Document],
+        admin_region: str
+    ) -> List[Document]:
+        """
+        Filter retrieved chunks to remove content about geographically irrelevant regions.
+
+        Args:
+            docs: Retrieved document chunks
+            admin_region: Region name (e.g., "Tigray", "Somali", "Oromia")
+
+        Returns:
+            Filtered list of documents relevant to the admin_region
+        """
+        if not admin_region or not docs:
+            return docs
+
+        admin_region_lower = admin_region.lower()
+        filtered_docs = []
+
+        # Define geographic exclusion rules
+        geographic_filters = {
+            'tigray': ['borena', 'somali', 'afar', 'dollo', 'korahe', 'gu/genna', 'deyr/hageya'],
+            'amhara': ['borena', 'somali', 'afar', 'dollo', 'korahe', 'gu/genna', 'deyr/hageya'],
+            'oromia': ['tigray', 'amhara'] if 'highland' in admin_region_lower or 'midland' in admin_region_lower else [],
+            'somali': ['tigray', 'amhara', 'oromia', 'snnpr', 'kiremt', 'belg'],
+            'afar': ['tigray', 'amhara', 'oromia', 'snnpr', 'kiremt', 'belg'],
+            'snnpr': ['tigray', 'amhara'] if 'highland' in admin_region_lower or 'midland' in admin_region_lower else []
+        }
+
+        exclude_regions = geographic_filters.get(admin_region_lower, [])
+
+        for doc in docs:
+            content_lower = doc.page_content.lower()
+            is_relevant = True
+
+            # Check if chunk mentions excluded regions
+            for exclude_region in exclude_regions:
+                if exclude_region in content_lower:
+                    print(f"   🗺️  Filtered chunk mentioning '{exclude_region}' (irrelevant to {admin_region})")
+                    is_relevant = False
+                    break
+
+            if is_relevant:
+                filtered_docs.append(doc)
+
+        if len(filtered_docs) < len(docs):
+            print(f"   🗺️  Geographic filtering: {len(docs)} → {len(filtered_docs)} chunks")
+
+        return filtered_docs
+
+    def _validate_shocks_geography(
+        self,
+        shock_types: List[str],
+        drivers: List[str],
+        shock_details: List[Dict],
+        region: str,
+        admin_region: str
+    ) -> Tuple[List[str], List[str]]:
+        """
+        Validate that detected shocks are relevant to the queried region.
+        Remove shocks that are clearly about geographically different areas.
+
+        Args:
+            shock_types: List of shock type names
+            drivers: List of driver names
+            shock_details: Detailed shock information
+            region: Specific woreda/region name
+            admin_region: Admin region (e.g., "Tigray")
+
+        Returns:
+            Tuple of (filtered_shock_types, filtered_drivers)
+        """
+        if not admin_region or not shock_details:
+            return shock_types, drivers
+
+        admin_region_lower = admin_region.lower()
+        filtered_shock_types = []
+        filtered_drivers = []
+        filtered_details = []
+
+        # Geographic exclusion rules for shocks
+        geographic_exclusions = {
+            'tigray': ['borena', 'somali', 'dollo', 'korahe', 'gu/genna', 'deyr/hageya'],
+            'amhara': ['borena', 'somali', 'dollo', 'korahe', 'gu/genna', 'deyr/hageya'],
+            'oromia': ['tigray', 'amhara'] if 'highland' in admin_region_lower else [],
+            'somali': ['tigray', 'amhara', 'oromia', 'snnpr', 'kiremt', 'belg'],
+            'afar': ['tigray', 'amhara', 'oromia', 'snnpr', 'kiremt', 'belg'],
+            'snnpr': ['tigray', 'amhara'] if 'highland' in admin_region_lower else []
+        }
+
+        exclude_terms = geographic_exclusions.get(admin_region_lower, [])
+
+        for i, shock_detail in enumerate(shock_details):
+            evidence = shock_detail.get('evidence', '').lower()
+            shock_type = shock_detail.get('type', '')
+
+            is_relevant = True
+
+            # Check if shock evidence mentions excluded geographic terms
+            for exclude_term in exclude_terms:
+                if exclude_term in evidence:
+                    print(f"   🌍 Filtered shock '{shock_type}' (mentions '{exclude_term}' - irrelevant to {admin_region})")
+                    is_relevant = False
+                    break
+
+            if is_relevant:
+                filtered_shock_types.append(shock_types[i] if i < len(shock_types) else shock_type)
+                filtered_drivers.append(drivers[i] if i < len(drivers) else shock_type)
+                filtered_details.append(shock_detail)
+
+        if len(filtered_shock_types) < len(shock_types):
+            print(f"   🌍 Shock geography validation: {len(shock_types)} → {len(filtered_shock_types)} shocks")
+
+        return filtered_shock_types, filtered_drivers
+
     def function3_recommend_interventions(
         self,
         region: str,
