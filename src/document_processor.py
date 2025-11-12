@@ -14,12 +14,13 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 class DocumentProcessor:
     """Process PDF documents and CSV data for RAG."""
     
-    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200):
+    def __init__(self, chunk_size: int = 1500, chunk_overlap: int = 300):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
+            separators=["\n\n\n", "\n\n", "\n", ". ", " ", ""],  # Respect section breaks
             length_function=len,
         )
     

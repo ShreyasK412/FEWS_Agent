@@ -650,9 +650,25 @@ class FEWSSystem:
             if admin_region and region_mentions < len(filtered_docs) / 2:
                 missing_info_logger.warning(f"Less than half of chunks mention {admin_region} - retrieval may be poor")
 
+            # Check for manual regional file and prepend if available
+            regional_file = f"current situation report/{admin_region.lower()}_northern_cropping.txt" if admin_region else None
+            manual_context = ""
+            if regional_file and os.path.exists(regional_file):
+                try:
+                    with open(regional_file, 'r') as f:
+                        manual_context = f.read()
+                    missing_info_logger.info(f"Found manual regional context from: {regional_file}")
+                except Exception as e:
+                    missing_info_logger.warning(f"Could not read manual regional file: {str(e)}")
+            
             # Limit to top chunks and build context
             filtered_docs = filtered_docs[:MAX_CONTEXT_CHUNKS]
             context = "\n\n".join([doc.page_content for doc in filtered_docs])
+            
+            # Prepend manual context if available
+            if manual_context:
+                context = manual_context + "\n\n--- Additional retrieved context from vector store: ---\n\n" + context
+            
             docs = filtered_docs
             
             # Check sufficiency
@@ -1012,34 +1028,53 @@ Produce a structured, contradiction-free explanation.
             is_relevant = True
             exclusion_reason = None
 
-            # Check for exclusion keywords (strong filter - if found, exclude)
-            for exclude_kw in exclude_keywords:
+            # Check for STRONG exclusion keywords (definite wrong region)
+            strong_exclude_keywords = [
+                'borena-somali border', 'borena-somali', 'intercommunal conflict july 2025',
+                '288,000 displaced', '288000 displaced'
+            ]
+            for exclude_kw in strong_exclude_keywords:
                 if exclude_kw in content_lower:
                     exclusion_reason = exclude_kw
                     is_relevant = False
                     break
 
-            # If not excluded, check for inclusion keywords (for Tigray/Amhara, require at least one)
+            # If not strongly excluded, check for weak exclusion (pastoral vs cropping conflict)
+            if is_relevant and admin_region_lower in ['tigray', 'amhara']:
+                # Only exclude pastoral keywords if they appear together with southern region keywords
+                pastoral_only_keywords = ['livestock births', 'milk production', 'pasture conditions', 'animal health']
+                southern_keywords = ['somali region', 'somali', 'borena', 'dollo', 'afder', 'korahe']
+                
+                has_pastoral = any(kw in content_lower for kw in pastoral_only_keywords)
+                has_southern = any(kw in content_lower for kw in southern_keywords)
+                
+                if has_pastoral and has_southern:
+                    exclusion_reason = "pastoral + southern keywords"
+                    is_relevant = False
+
+            # If not excluded, prefer chunks with inclusion keywords (but don't strictly require them)
+            # This allows generic Ethiopia-wide content while preferring regional content
             if is_relevant and include_keywords:
                 has_include = any(kw in content_lower for kw in include_keywords)
-                if not has_include:
-                    # For northern regions, require inclusion keywords
-                    if admin_region_lower in ['tigray', 'amhara']:
-                        exclusion_reason = "no northern/highland keywords"
-                        is_relevant = False
+                # Don't exclude if no inclusion keywords found - just deprioritize
+                # The ordering will naturally put region-specific content first anyway
 
             if is_relevant:
                 filtered_docs.append(doc)
+                if has_include:
+                    self.logger.debug(f"✓ Kept chunk with {admin_region} context")
+                else:
+                    self.logger.debug(f"⊙ Kept generic chunk (no {admin_region} keywords but no strong exclusions)")
             else:
-                print(f"   🗺️  Filtered chunk: '{exclusion_reason}' (irrelevant to {admin_region})")
+                self.logger.debug(f"✗ Filtered chunk: '{exclusion_reason}' (irrelevant to {admin_region})")
 
         if len(filtered_docs) < len(docs):
             print(f"   🗺️  Geographic filtering: {len(docs)} → {len(filtered_docs)} chunks")
 
-        # If filtering removed everything, keep top 3 unfiltered (with warning)
+        # If filtering removed everything, keep all (geographic filter was too strict)
         if not filtered_docs and docs:
-            print(f"   ⚠️  Geographic filtering removed all chunks - using top 3 unfiltered (may contain wrong region content)")
-            filtered_docs = docs[:3]
+            self.logger.warning(f"Geographic filtering removed all chunks - using all {len(docs)} unfiltered chunks")
+            filtered_docs = docs
 
         return filtered_docs
 
