@@ -2,8 +2,7 @@
 FEWS CLI - Command-line interface for the Famine Early Warning System
 """
 import sys
-from fews_system import FEWSSystem
-from ipc_parser import RegionRiskAssessment
+from src import FEWSSystem, RegionRiskAssessment
 
 
 def print_assessment(assessment: RegionRiskAssessment):
@@ -31,7 +30,9 @@ def main():
     system = FEWSSystem()
     
     # Setup vector stores (this may take a while first time)
-    print("\nSetting up vector stores (this may take a few minutes)...")
+    print("\nSetting up vector stores...")
+    print("   Note: If vector stores already exist, this will be fast.")
+    print("   If creating new ones, this may take 30-60 minutes for large PDFs.")
     system.setup_vector_stores()
     
     while True:
