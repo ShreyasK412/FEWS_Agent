@@ -1,11 +1,32 @@
-# ✅ BUG FIX: UnboundLocalError RESOLVED
+# ✅ BUG FIXES: ALL ERRORS RESOLVED
 
-## The Error
+## Bug 1: UnboundLocalError ✅ FIXED
 ```
 UnboundLocalError: local variable 'has_include' referenced before assignment
   File "/Users/shreyaskamath/FEWS/src/fews_system.py", line 1064, in _filter_chunks_by_geography
     if has_include:
 ```
+
+**Fix**: Initialize `has_include = False` before conditionals
+
+## Bug 2: AttributeError ✅ FIXED
+```
+AttributeError: 'FEWSSystem' object has no attribute 'logger'
+  File "/Users/shreyaskamath/FEWS/src/fews_system.py", line 1068, in _filter_chunks_by_geography
+    self.logger.debug(...)
+```
+
+**Fix**: Add `self.logger = missing_info_logger` in `__init__`
+
+## Bug 3: Indentation Errors ✅ FIXED
+```
+IndentationError: unexpected indent
+- Over-indented prompt closing
+- Over-indented chain assignment  
+- Over-indented exception returns
+```
+
+**Fix**: Corrected indentation in function2_explain_why and function3_recommend_interventions
 
 ## The Problem
 In `_filter_chunks_by_geography()`, the variable `has_include` was only defined inside a conditional block:
