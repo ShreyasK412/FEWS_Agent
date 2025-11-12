@@ -837,6 +837,71 @@ Produce a structured, contradiction-free explanation.
         ipc_phase = assessment.current_phase
         drivers_str = ", ".join(drivers) if drivers else "general food insecurity"
         
+        # Get livelihood information for zone-appropriate intervention filtering
+        geographic_parts = assessment.geographic_full_name.split(',') if hasattr(assessment, 'geographic_full_name') else []
+        region_name = geographic_parts[-2].strip() if len(geographic_parts) >= 2 else ""
+        zone_name = geographic_parts[1].strip() if len(geographic_parts) >= 2 else ""
+        admin_name = region
+        
+        livelihood_info = self.domain_knowledge.get_livelihood_system(
+            region=region_name,
+            zone=zone_name,
+            admin=admin_name
+        )
+        
+        # Determine intervention filters based on livelihood zone
+        intervention_filters = []
+        livelihood_note = ""
+        
+        if livelihood_info:
+            livelihood_system = livelihood_info.livelihood_system.lower()
+            
+            if 'rainfed' in livelihood_system or 'cropping' in livelihood_system or 'highland' in livelihood_system:
+                # Highland cropping zone - filter out pastoral interventions
+                intervention_filters = [
+                    "destocking", "livestock feed", "pastoral", "herd", "milk production",
+                    "pasture", "vaccination campaigns for livestock", "livestock water",
+                    "animal health", "veterinary mobile units", "fodder", "restocking",
+                    "herd management", "rangeland", "grazing"
+                ]
+                livelihood_note = (
+                    f"CRITICAL LIVELIHOOD CONSTRAINT: {region} is in a HIGHLAND CROPPING zone "
+                    f"({livelihood_info.livelihood_system}). You MUST NOT recommend pastoral interventions "
+                    f"such as: destocking, livestock feed, pastoral water points, veterinary campaigns, "
+                    f"herd management, or rangeland management. Instead, focus on: seed distribution, "
+                    f"fertilizer, crop protection, agricultural labor support, mechanized farming, "
+                    f"irrigation for crops, post-harvest storage, and food processing."
+                )
+            
+            elif 'pastoral' in livelihood_system and 'agro' not in livelihood_system:
+                # Pastoral zone - filter out crop-based interventions
+                intervention_filters = [
+                    "seed distribution", "fertilizer", "crop production", "harvest support",
+                    "agricultural labor", "mechanized farming", "planting", "crop protection",
+                    "irrigation for crops", "post-harvest", "food processing"
+                ]
+                livelihood_note = (
+                    f"CRITICAL LIVELIHOOD CONSTRAINT: {region} is in a PASTORAL zone "
+                    f"({livelihood_info.livelihood_system}). You MUST NOT recommend crop-based interventions "
+                    f"such as: seed distribution, fertilizer, crop production, harvest support, or irrigation "
+                    f"for crops. Instead, focus on: livestock feed, veterinary care, water for livestock, "
+                    f"strategic destocking, restocking where appropriate, pasture management, and livestock "
+                    f"market support."
+                )
+            
+            else:  # agropastoral or mixed
+                intervention_filters = []
+                livelihood_note = (
+                    f"LIVELIHOOD CONTEXT: {region} is in an AGROPASTORAL/MIXED zone "
+                    f"({livelihood_info.livelihood_system}). You may recommend both crop-based and "
+                    f"livestock-based interventions as appropriate to the drivers and IPC phase."
+                )
+        else:
+            livelihood_note = (
+                f"LIVELIHOOD CONTEXT: Livelihood system for {region} is not specified in domain knowledge. "
+                f"Recommend interventions based on drivers and IPC phase, but note this limitation."
+            )
+        
         # Build query with generic intervention keywords to ensure retrieval
         # Intervention literature doesn't contain region names or IPC phase numbers,
         # so we need to search by intervention types and drivers
@@ -984,9 +1049,11 @@ Produce a structured, contradiction-free explanation.
             # Use LLM to generate recommendations with new driver-linked prompt
             ipc_phase_desc = 'Emergency' if ipc_phase >= 4 else 'Crisis' if ipc_phase >= 3 else 'Stressed'
             prompt = PromptTemplate(
-                input_variables=["region", "ipc_phase", "ipc_phase_desc", "drivers", "context", "intervention_context"],
+                input_variables=["region", "ipc_phase", "ipc_phase_desc", "drivers", "context", "intervention_context", "livelihood_note"],
                 template="""You are a humanitarian emergency response advisor. 
 Your job is to recommend interventions for {region}, which is experiencing IPC Phase {ipc_phase}.
+
+{livelihood_note}
 
 AUTHORITATIVE DATA YOU MUST OBEY:
 - DRIVERS (validated shocks only): {drivers}
@@ -998,6 +1065,7 @@ You MUST:
 - Use the retrieved literature to justify each major intervention category
 - NEVER hallucinate missing data or say "insufficient literature" unless context is literally empty
 - NEVER contradict given drivers
+- STRICTLY FOLLOW the livelihood constraint above (do not recommend filtered intervention types)
 
 ===========================================================
 MANDATORY STRUCTURE
@@ -1069,7 +1137,8 @@ Never output hallucinated limitations.
                 "ipc_phase_desc": ipc_phase_desc,
                 "drivers": drivers_str,
                 "context": context,
-                "intervention_context": intervention_context
+                "intervention_context": intervention_context,
+                "livelihood_note": livelihood_note
             })
             
             sources = [doc.metadata.get('source', 'Unknown') for doc in docs]
