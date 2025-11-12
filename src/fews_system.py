@@ -474,7 +474,7 @@ class FEWSSystem:
             livelihood_system_for_prompt = f"{livelihood_info.livelihood_system} ({livelihood_info.elevation_category})"
             livelihood_notes = livelihood_info.notes if isinstance(livelihood_info.notes, str) else ""
         else:
-            livelihood_system_for_prompt = "No livelihood data available for this region."
+            livelihood_system_for_prompt = "None"
             livelihood_notes = ""
         
         # Get rainfall season from domain knowledge
@@ -491,7 +491,7 @@ class FEWSSystem:
             rainfall_notes = rainfall_info.notes if isinstance(rainfall_info.notes, str) else ""
             rainfall_months = rainfall_info.season_months if isinstance(rainfall_info.season_months, str) else ""
         else:
-            rainfall_season_for_prompt = "No rainfall season data available for this region."
+            rainfall_season_for_prompt = "None"
             rainfall_notes = ""
             rainfall_months = ""
         
@@ -613,83 +613,76 @@ class FEWSSystem:
                     "region",
                     "ipc_phase",
                     "context",
-                    "domain_context",
                     "validated_shocks",
                     "livelihood_system",
                     "rainfall_season"
                 ],
-                template="""You are a senior Integrated Food Security Phase Classification (IPC) analyst. 
-Your task is to explain WHY {region} is experiencing IPC Phase {ipc_phase} food insecurity.
+                template="""You are a senior IPC Analyst. Your job is to explain WHY {region} is experiencing IPC Phase {ipc_phase} food insecurity.
 
-You MUST anchor all reasoning to the structured inputs below. They override any inference from narrative text.
+IMPORTANT — AUTHORITATIVE DOMAIN KNOWLEDGE VALUES:
+You are ALWAYS given the following fields directly from structured domain knowledge:
+- LIVELIHOOD SYSTEM: {livelihood_system}
+- RAINFALL SEASON: {rainfall_season}
+- VALIDATED SHOCKS: {validated_shocks}
 
-LIVELIHOOD SYSTEM: {livelihood_system}
-RAINFALL SEASON: {rainfall_season}
-IPC PHASE FOR THIS REGION: {ipc_phase}
-VALIDATED SHOCKS FOR THIS REGION: {validated_shocks}
+These values are ALWAYS correct and MUST NOT be contradicted, replaced, ignored, or described as "unknown," "not mentioned," "unclear," or "not provided."  
+These values DO NOT come from reports — they come from authoritative domain knowledge.
 
-You MUST treat the above values as complete and authoritative:
-- Use the livelihood system exactly as written. Do NOT say it is unknown or unclear unless it explicitly states "No livelihood data available for this region."
-- Use the rainfall season exactly as written. Do NOT substitute different seasons. If it states "No rainfall season data available..." you may only reference rainfall generically.
-- Treat the IPC phase as definitive. You may NOT claim the phase is unknown, misaligned, or cannot be determined.
-- The validated shocks list is the full and final set of shocks you are allowed to discuss.
-  * If the list is empty, you MUST say “No validated shocks detected.” and you MUST NOT speculate about other shocks.
-  * If the list is not empty, you MUST list ONLY these shocks and MUST NOT say shocks are missing or unknown.
-
-You MUST use ONLY:
-1. DOMAIN KNOWLEDGE CONTEXT (below) - reference information to support explanations
-2. CONTEXT FROM SITUATION REPORTS (below) - retrieved narrative evidence
+LIMITATION RULE:
+In the Limitations section, you may ONLY state a limitation if the input value is literally NULL or empty (i.e., "None").  
+If a field is present, you MUST NOT claim it is missing.
 
 ===========================================================
-MANDATORY ANALYSIS FRAMEWORK (MUST FOLLOW THIS EXACT ORDER)
+MANDATORY ANALYSIS STRUCTURE
 ===========================================================
 
-A. Overview
-   - Brief summary of the situation
+A. Overview  
+A concise 2–3 sentence summary of the food security situation.
 
-B. Livelihood System
-   - Restate the livelihood system from LIVELIHOOD SYSTEM above
-   - Explain why this system matters for food access using contextual evidence
+B. Livelihood System  
+Use EXACTLY the livelihood system passed in: {livelihood_system}.  
+Explain why this livelihood is sensitive to shocks.
 
-C. Seasonal Calendar
-   - Restate the rainfall season from RAINFALL SEASON above
-   - If rainfall season data is unavailable, use neutral rainfall language without naming seasons
+C. Seasonal Calendar  
+Use EXACTLY the rainfall season passed in: {rainfall_season}.  
+Explain how that season affects production and food access.
 
-D. Shocks
-   - If VALIDATED SHOCKS is empty, state “No validated shocks detected.”
-   - If not empty, list ONLY those shocks and cite evidence from CONTEXT FROM SITUATION REPORTS
-   - NEVER add shocks that are not in the validated list
+D. Shocks  
+List ONLY the validated shocks: {validated_shocks}.  
+Do NOT infer or hallucinate shocks not included in the list.
 
-E. Livelihood Impacts
-   - Describe impacts on production, livestock, labor, and markets ONLY if the retrieved context provides explicit evidence.
-   - If no evidence exists, state: “No specific livelihood impact details were found in the retrieved reports.”
+E. Livelihood Impacts  
+For each validated shock, explain impacts on:
+- production  
+- livestock  
+- labor markets  
+- market access  
+- household purchasing power  
+Never hallucinate impacts unrelated to validated shocks.
 
-F. Food Access and Consumption
-   - Discuss consumption gaps, meal frequency, dietary diversity, or coping strategies ONLY if explicitly mentioned in the context.
-   - If not mentioned, state: “No specific information about consumption gaps or coping strategies was found in the retrieved reports.”
+F. Food Access & Consumption  
+Explain the consequences: consumption gaps, coping, market stress, etc.  
+Stay tied to validated shocks.
 
-G. Nutrition & Health
-   - Discuss GAM/SAM, malnutrition, or health outcomes ONLY if the context explicitly mentions them.
-   - If not mentioned, state: “No specific nutrition or health information was found in the retrieved reports.”
+G. Nutrition & Health  
+If no nutrition data is in retrieved context, say:  
+"No nutrition information available in retrieved context."
 
-H. IPC Alignment
-   - Link available evidence to IPC Phase {ipc_phase} outcomes.
-   - You MUST affirm that the region is IPC Phase {ipc_phase}; you may discuss evidence gaps but may NOT claim misalignment or uncertainty about the phase.
+H. IPC Alignment  
+Explain how the validated shocks + impacts lead to IPC Phase {ipc_phase}.  
+Use official IPC interpretation rules.
 
-I. Limitations
-   - Mention missing livelihood or rainfall data ONLY if the structured values above state “No ... data available.”
-   - Mention missing shocks ONLY if VALIDATED SHOCKS is empty.
-   - State if {region} is not directly named in the retrieved context.
-   - NEVER contradict the provided livelihood system, rainfall season, IPC phase, or validated shocks.
+I. Limitations  
+Only include TRUE limitations:
+- If no report text pertains to {region}, state that.
+- If validated_shocks is empty, say so.
+- DO NOT say livelihood system or rainfall season is missing if values were supplied (i.e., not "None").
 
 ===========================================================
-DOMAIN KNOWLEDGE CONTEXT (reference only):
-{domain_context}
-
 CONTEXT FROM SITUATION REPORTS:
 {context}
 
-Produce a detailed, structured IPC-style analytical narrative following the exact format above.
+Produce a structured, contradiction-free explanation.
 """
             )
             
@@ -702,7 +695,6 @@ Produce a detailed, structured IPC-style analytical narrative following the exac
             explanation = chain.invoke({
                 "region": region,
                 "ipc_phase": assessment.current_phase,
-                "domain_context": domain_context,
                 "validated_shocks": validated_shocks_str,
                 "context": context,
                 "livelihood_system": livelihood_system_for_prompt,
@@ -936,97 +928,65 @@ Produce a detailed, structured IPC-style analytical narrative following the exac
             ipc_phase_desc = 'Emergency' if ipc_phase >= 4 else 'Crisis' if ipc_phase >= 3 else 'Stressed'
             prompt = PromptTemplate(
                 input_variables=["region", "ipc_phase", "ipc_phase_desc", "drivers", "context", "intervention_context"],
-                template="""You are a humanitarian emergency response advisor. 
-Your job is to recommend interventions for {region} experiencing IPC Phase {ipc_phase}.
+                template="""You are a humanitarian emergency response advisor.  
+Your job is to recommend interventions for {region}, which is experiencing IPC Phase {ipc_phase}.
 
-Use ONLY the intervention literature provided in the context.
+AUTHORITATIVE DATA YOU MUST OBEY:
+- DRIVERS (validated shocks only): {drivers}
+- INTERVENTION MAPPINGS from driver_interventions.json (authoritative)
+- INTERVENTION LITERATURE: {context}
+
+You MUST:
+- Map each driver → its matched intervention domains (from driver_interventions.json)
+- Use the retrieved literature to justify each major intervention category
+- NEVER hallucinate missing data or say "insufficient literature" unless context is literally empty
+- NEVER contradict given drivers
 
 ===========================================================
 MANDATORY STRUCTURE
 ===========================================================
 
-1. LINK INTERVENTIONS TO DRIVERS
-   For each major driver in DRIVERS, map at least one relevant intervention or 
-   package of interventions, drawing on:
-   - Sphere Minimum Standards (Food Security & Nutrition, WASH)
-   - Cash & Voucher (CVA) guidance (CALP, UNHCR/WFP)
-   - WFP Essential Needs, GFD, and EFSA guidelines
-   - Nutrition in Emergencies protocols (CMAM, IYCF-E, SAM/MAM treatment)
-   - Livestock Emergency Guidelines and Standards (LEGS)
-   - FAO agricultural and livelihood support
-   - Food Security & Nutrition Cluster (FSC/GNC) guidance
-   - USAID/BHA emergency and early recovery guidelines
+A. Summary  
+2–3 sentences summarizing key emergency needs.
 
-2. IPC PHASE–SPECIFIC PRIORITIZATION
-   For IPC Phase 3 (Crisis):
-     - Prioritize livelihood protection, market support, early cash,
-       agricultural inputs, and targeted food assistance.
-   For IPC Phase 4 (Emergency):
-     - Prioritize life-saving food assistance, SAM treatment, water trucking,
-       survival livestock support, and high-intensity CVA where markets function.
-   For IPC Phase 5 (Catastrophe/Famine):
-     - Prioritize blanket food distributions, therapeutic feeding, emergency water,
-       and any other life-saving measures, with less emphasis on medium-term recovery.
+B. Immediate Emergency Actions  
+Driven by IPC Phase {ipc_phase} priorities:
+- Life-saving food assistance  
+- WASH emergency measures  
+- Protection mainstreaming  
+- Any driver-linked immediate measures  
 
-3. MANDATORY INTERVENTION COVERAGE
-   You MUST consider and, where relevant, recommend interventions in each of the
-   following domains (even if briefly):
+C. Food & Nutrition  
+Use:
+- Sphere Handbook Nutrition Standards
+- CMAM/SAM/MAM protocols
+- Blanket Supplementary Feeding rules
 
-   - FOOD:
-     - General food distribution (GFD), vouchers, or cash-based transfers aligned
-       with essential needs.
-   - NUTRITION:
-     - CMAM programming, SAM/MAM treatment, blanket supplementary feeding where needed,
-       IYCF-E support for infants and young children.
-   - LIVESTOCK:
-     - LEGS-consistent support: emergency feed, water for livestock, veterinary care,
-       strategic destocking, restocking where appropriate.
-   - AGRICULTURE & LIVELIHOODS:
-     - Seeds, tools, support for next season planting, small-scale irrigation, soil
-       and water conservation, support to petty trade and small businesses.
-   - CASH & MARKETS:
-     - CVA (multi-purpose cash, vouchers), trader credit where appropriate, support
-       to restore supply chains and stabilize markets.
-   - WASH:
-     - Water trucking, rehabilitation of water points, water quality treatment,
-       hygiene promotion, WASH in nutrition and health facilities.
-   - HEALTH:
-     - Disease surveillance, ORS/zinc, malaria prevention where relevant, linkages
-       between nutrition and health services.
-   - PROTECTION & DISPLACEMENT:
-     - Safeguarding, GBV risk mitigation, safe access to assistance, attention to
-       displaced populations and host communities.
+D. Cash & Markets  
+Use:
+- CALP CVA guidance
+- Trader credit
+- Market functionality thresholds
 
-4. BEST PRACTICE REFERENCES
-   Where possible, explicitly reference the relevant guidance family, e.g.:
-   - "Sphere Handbook: Food Security & Nutrition standards"
-   - "Sphere WASH standards"
-   - "LEGS livestock emergency guidelines"
-   - "WFP Essential Needs Guidelines"
-   - "CMAM/WHO SAM treatment protocols"
-   - "CALP Cash & Voucher Assistance guidance"
-   - "Global Food Security Cluster coordination guidance"
+E. Livelihood Protection  
+Use validated LEGS livestock actions and agricultural support.
 
-5. LIMITATIONS
-   - If the literature does not directly address a very specific local constraint,
-     acknowledge this, but still provide the best-practice intervention package 
-     based on the closest relevant guidance.
-   - You MUST NOT say "no recommendation is made" or leave a domain blank if 
-     there is general best-practice guidance in the literature.
+F. WASH and Health Linkages  
+Use Sphere WASH standards and emergency health linkages.
+
+G. Coordination Requirements  
+Cluster coordination, IPC-consistent decision-making, information sharing.
+
+H. Medium-Term Recovery  
+Driver-linked livelihood and resilience-building measures.
+
+I. Limitations  
+You may ONLY include:
+- "Intervention literature contained no relevant guidance" if context == empty.
+- Do NOT invent limitations.
+- Do NOT claim missing drivers or missing domain knowledge.
 
 ===========================================================
-FORMAT OUTPUT AS:
-A. Summary
-B. Immediate Emergency Actions
-C. Food & Nutrition Interventions
-D. Cash and Market Support
-E. Livelihood Protection (incl. livestock and agriculture)
-F. WASH and Health Linkages
-G. Coordination Requirements
-H. Medium-term Recovery
-I. Limitations
-===========================================================
-
 REGION: {region}
 IPC PHASE: {ipc_phase} ({ipc_phase_desc})
 DRIVERS: {drivers}
@@ -1036,10 +996,12 @@ DRIVERS: {drivers}
 INTERVENTION LITERATURE:
 {context}
 
-All recommendations MUST be evidence-based and explicitly tied to the literature,
-and must be clearly linked back to the drivers of food insecurity.
-Use the structured intervention mappings above as a guide, but ground all recommendations
-in the intervention literature provided.
+Output must be grounded ONLY in:
+- driver_interventions.json
+- retrieved literature
+- IPC phase rules
+
+Never output hallucinated limitations.
 """
             )
             
