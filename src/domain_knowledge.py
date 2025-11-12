@@ -449,6 +449,85 @@ class DomainKnowledge:
                 drivers.append(driver)
         return drivers
     
+    def detect_shocks_by_zone(
+        self, 
+        text: str, 
+        livelihood_zone: str, 
+        region: str,
+        ipc_phase: Optional[int] = None
+    ) -> Tuple[List[str], List[Dict[str, any]]]:
+        """
+        Detect shocks using zone-appropriate keywords with confidence scoring.
+        
+        Args:
+            text: Retrieved context text to analyze
+            livelihood_zone: Livelihood system (e.g., 'rainfed cropping', 'pastoral', 'agropastoral')
+            region: Region name for context
+            ipc_phase: IPC phase for anomaly detection
+            
+        Returns:
+            Tuple of (shock_types, detailed_results)
+            - shock_types: List of detected shock type keys
+            - detailed_results: List of dicts with shock type, keywords found, and confidence
+        """
+        detected_shocks = []
+        shock_types = []
+        text_lower = text.lower()
+        
+        # Determine zone category for keyword selection
+        if 'rainfed' in livelihood_zone.lower() or 'cropping' in livelihood_zone.lower() or 'highland' in livelihood_zone.lower():
+            zone_category = 'highland_cropping'
+        elif 'pastoral' in livelihood_zone.lower() and 'agro' not in livelihood_zone.lower():
+            zone_category = 'pastoral'
+        elif 'agropastoral' in livelihood_zone.lower() or 'mixed' in livelihood_zone.lower():
+            zone_category = 'agropastoral'
+        else:
+            zone_category = 'all_zones'
+        
+        # Analyze each shock type
+        for shock_type, shock_data in self.shock_ontology.items():
+            # Get zone-specific keywords
+            zone_keywords = shock_data.get(f'keywords_{zone_category}', [])
+            all_zone_keywords = shock_data.get('keywords_all_zones', [])
+            
+            # Combine keywords
+            keywords = zone_keywords + all_zone_keywords
+            
+            # Check for keyword matches
+            matches = [kw for kw in keywords if kw.lower() in text_lower]
+            
+            if matches:
+                # Calculate confidence based on number of matches
+                if len(matches) >= 3:
+                    confidence = 'high'
+                elif len(matches) >= 2:
+                    confidence = 'medium'
+                else:
+                    confidence = 'low'
+                
+                shock_types.append(shock_type)
+                detected_shocks.append({
+                    'type': shock_type,
+                    'keywords_found': matches[:5],  # Top 5 matches
+                    'confidence': confidence,
+                    'category': shock_data.get('category', 'unknown'),
+                    'zone_category': zone_category
+                })
+        
+        # If no shocks detected but IPC >= 3, flag as anomaly
+        if not detected_shocks and ipc_phase and ipc_phase >= 3:
+            detected_shocks.append({
+                'type': 'unknown',
+                'keywords_found': [],
+                'confidence': 'low',
+                'category': 'unknown',
+                'note': f'IPC Phase {ipc_phase} indicates crisis but no specific shocks detected in retrieved text',
+                'zone_category': zone_category
+            })
+            shock_types.append('unknown')
+        
+        return shock_types, detected_shocks
+    
     def get_interventions_for_driver(self, driver: str) -> Optional[Dict]:
         """
         Get intervention recommendations for a specific driver.

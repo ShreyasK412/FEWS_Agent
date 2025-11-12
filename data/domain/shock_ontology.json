@@ -1,48 +1,156 @@
 {
-  "drought": {
-    "keywords": [
-      "below-average rainfall",
-      "rainfall deficit",
-      "dry conditions",
-      "crop moisture stress",
+  "weather": {
+    "keywords_highland_cropping": [
       "drought",
-      "failed rainfall",
+      "delayed rains",
+      "late onset",
+      "dry spell",
+      "moisture deficit",
+      "kiremt delayed",
+      "kiremt failure",
+      "belg failure",
       "poor rainfall",
-      "rainfall failure",
-      "insufficient rainfall",
-      "rainfall anomalies",
-      "seasonal failure",
-      "harvest failure",
+      "erratic rains",
       "crop failure",
+      "below-average production",
+      "sorghum delayed",
+      "replanting",
+      "crop wilting",
+      "water scarcity",
+      "meher production below average",
+      "harvest failure",
+      "rainfall deficit",
+      "failed season"
+    ],
+    "keywords_pastoral": [
+      "drought",
+      "deyr failure",
+      "gu below average",
+      "poor pasture",
+      "water scarcity",
+      "livestock death",
+      "body condition poor",
+      "milk production low",
+      "failed season",
+      "consecutive poor seasons",
+      "pasture degradation",
+      "water points dried",
+      "herd losses",
+      "livestock mortality"
+    ],
+    "keywords_agropastoral": [
+      "drought",
+      "delayed rains",
+      "poor rainfall",
+      "crop failure",
+      "pasture stress",
+      "water scarcity",
+      "below-average production",
+      "livestock stress",
+      "failed season"
+    ],
+    "keywords_all_zones": [
+      "below-average rainfall",
+      "rainfall anomalies",
+      "dry conditions",
       "water stress",
-      "dry spell"
+      "insufficient rainfall"
     ],
     "category": "climate",
-    "description": "Rainfall deficits leading to crop failure, water stress, or livestock feed shortages"
+    "description": "Rainfall deficits leading to crop failure, water stress, or livestock feed shortages",
+    "ipc_relevance": [2, 3, 4, 5]
   },
   "conflict": {
-    "keywords": [
+    "keywords_highland_cropping": [
+      "conflict",
+      "war",
+      "fighting",
+      "clash",
+      "armed groups",
+      "displacement",
+      "insecurity",
+      "road blockage",
+      "blocked roads",
+      "trade disruption",
+      "fano",
+      "tplf",
+      "pretoria agreement",
+      "west tigray contested",
+      "limited labor migration",
+      "fuel shortage",
+      "restricted mobility",
+      "military operations",
+      "security incidents",
+      "access constraints"
+    ],
+    "keywords_pastoral": [
+      "conflict",
+      "intercommunal violence",
+      "clan clashes",
+      "border dispute",
+      "displacement",
+      "livestock raiding",
+      "pasture access restricted",
+      "armed groups",
+      "insecurity",
+      "militia"
+    ],
+    "keywords_agropastoral": [
       "conflict",
       "insecurity",
-      "clashes",
-      "shooting",
-      "attacks",
-      "militia",
+      "displacement",
       "armed groups",
+      "clashes",
+      "violence",
+      "access constraints"
+    ],
+    "keywords_all_zones": [
+      "conflict",
+      "insecurity",
       "violence",
       "fighting",
-      "hostilities",
-      "armed conflict",
-      "security incidents",
-      "military operations"
+      "displacement",
+      "attacks",
+      "hostilities"
     ],
     "category": "security",
-    "description": "Armed conflict, insecurity, or violence affecting access and livelihoods"
+    "description": "Armed conflict, insecurity, or violence affecting access and livelihoods",
+    "ipc_relevance": [3, 4, 5]
   },
-  "price_increase": {
-    "keywords": [
+  "economic": {
+    "keywords_highland_cropping": [
       "high food prices",
-      "market inflation",
+      "inflation",
+      "currency depreciation",
+      "low wages",
+      "purchasing power",
+      "market prices",
+      "below-average income",
+      "limited labor opportunities",
+      "reduced remittances",
+      "khat sales declined",
+      "employment below average",
+      "income losses"
+    ],
+    "keywords_pastoral": [
+      "livestock prices low",
+      "terms of trade",
+      "market access limited",
+      "trader credit",
+      "high food prices",
+      "purchasing power reduced",
+      "livestock sales below average",
+      "export restrictions"
+    ],
+    "keywords_agropastoral": [
+      "high food prices",
+      "low income",
+      "market prices",
+      "purchasing power",
+      "limited opportunities",
+      "terms of trade"
+    ],
+    "keywords_all_zones": [
       "price spikes",
       "price increases",
       "rising prices",
@@ -54,123 +162,129 @@
       "trade disruption"
     ],
     "category": "economic",
-    "description": "Rising food prices reducing purchasing power and food access"
+    "description": "Market disruptions, price increases, or economic shocks affecting purchasing power",
+    "ipc_relevance": [2, 3, 4]
+  },
+  "livelihood_disruption": {
+    "keywords_highland_cropping": [
+      "labor migration constrained",
+      "employment below average",
+      "harvest delayed",
+      "meher production below average",
+      "food stocks depleted early",
+      "asset depletion",
+      "selling livestock",
+      "PSNP reduced",
+      "wage labor limited",
+      "remittances declined",
+      "coping strategies exhausted"
+    ],
+    "keywords_pastoral": [
+      "herd size reduced",
+      "livestock losses",
+      "migration patterns disrupted",
+      "calving delayed",
+      "lactation period short",
+      "destocking",
+      "herd splitting",
+      "unusual livestock sales",
+      "pasture access limited"
+    ],
+    "keywords_agropastoral": [
+      "asset depletion",
+      "livestock sales increased",
+      "crop production below average",
+      "income sources reduced",
+      "migration disrupted"
+    ],
+    "keywords_all_zones": [
+      "livelihood stress",
+      "income losses",
+      "asset sales",
+      "coping strategies"
+    ],
+    "category": "livelihood",
+    "description": "Disruption to normal livelihood activities and income sources",
+    "ipc_relevance": [3, 4]
   },
   "displacement": {
-    "keywords": [
-      "IDPs",
+    "keywords_all_zones": [
+      "IDP",
       "internally displaced",
-      "population movement",
-      "displaced households",
       "displacement",
-      "forced migration",
-      "fleeing",
-      "evacuation",
-      "uprooted",
-      "migration",
-      "refugees"
+      "refugee",
+      "newly displaced",
+      "returnees",
+      "host communities",
+      "fled",
+      "evacuated",
+      "relocated",
+      "displaced populations",
+      "population movement",
+      "forced migration"
     ],
-    "category": "social",
-    "description": "Population displacement disrupting livelihoods and access to resources"
+    "category": "humanitarian",
+    "description": "Population displacement due to conflict, disasters, or other shocks",
+    "ipc_relevance": [3, 4, 5]
   },
-  "livestock_mortality": {
-    "keywords": [
-      "disease outbreak",
-      "poor body conditions",
-      "animal deaths",
-      "livestock mortality",
-      "livestock disease",
-      "animal disease",
-      "livestock loss",
-      "cattle deaths",
-      "goat deaths",
-      "sheep deaths",
-      "camel deaths",
-      "veterinary",
-      "animal health"
+  "market_access": {
+    "keywords_highland_cropping": [
+      "market disruption",
+      "supply chain",
+      "road access",
+      "transportation costs",
+      "market function",
+      "trader absence",
+      "fuel shortage",
+      "market access limited",
+      "blocked roads"
     ],
-    "category": "livestock",
-    "description": "Livestock disease, mortality, or poor body conditions affecting pastoral livelihoods"
-  },
-  "flooding": {
-    "keywords": [
-      "flooding",
-      "floods",
-      "flash floods",
-      "river overflow",
-      "waterlogging",
-      "excessive rainfall",
-      "heavy rains",
-      "inundation"
+    "keywords_pastoral": [
+      "market distance",
+      "livestock market closed",
+      "export ban",
+      "cross-border trade",
+      "market access restricted",
+      "trader credit limited"
     ],
-    "category": "climate",
-    "description": "Excessive rainfall or flooding causing crop damage and displacement"
-  },
-  "crop_pests": {
-    "keywords": [
-      "pest infestation",
-      "locusts",
-      "armyworm",
-      "crop pests",
-      "insect damage",
-      "disease outbreak",
-      "plant disease"
-    ],
-    "category": "agricultural",
-    "description": "Pest or disease outbreaks affecting crop production"
-  },
-  "market_disruption": {
-    "keywords": [
-      "market closure",
-      "trade disruption",
-      "supply chain disruption",
-      "transport disruption",
-      "road closure",
-      "market access constraints",
-      "trade restrictions"
-    ],
-    "category": "economic",
-    "description": "Market or trade disruptions limiting food availability and access"
-  },
-  "humanitarian_access_constraints": {
-    "keywords": [
-      "humanitarian access",
+    "keywords_agropastoral": [
+      "market disruption",
       "access constraints",
-      "aid delivery",
-      "humanitarian assistance",
-      "aid restrictions",
-      "delivery constraints",
-      "access denied"
+      "transportation issues",
+      "market function limited"
     ],
-    "category": "logistics",
-    "description": "Constraints preventing humanitarian assistance from reaching affected populations"
-  },
-  "macroeconomic_shocks": {
-    "keywords": [
-      "economic crisis",
-      "inflation",
-      "currency devaluation",
-      "economic downturn",
-      "recession",
-      "economic shock",
-      "financial crisis"
+    "keywords_all_zones": [
+      "market disruption",
+      "access constraints",
+      "supply chain issues"
     ],
     "category": "economic",
-    "description": "Macroeconomic shocks affecting purchasing power and economic stability"
+    "description": "Constraints on market access or market functionality",
+    "ipc_relevance": [2, 3, 4]
   },
-  "nutrition": {
-    "keywords": [
-      "gam",
-      "sam",
-      "mam",
-      "acute malnutrition",
+  "nutrition_health": {
+    "keywords_all_zones": [
+      "malnutrition",
+      "GAM",
+      "SAM",
+      "MAM",
       "wasting",
       "stunting",
-      "nutrition",
-      "malnutrition"
+      "acute malnutrition",
+      "MUAC",
+      "admissions",
+      "mortality",
+      "disease outbreak",
+      "measles",
+      "cholera",
+      "AWD",
+      "nutrition crisis",
+      "undernutrition",
+      "child malnutrition",
+      "health crisis"
     ],
-    "category": "nutrition",
-    "description": "Deteriorating nutrition outcomes indicating stress on food security"
+    "category": "health",
+    "description": "Nutrition indicators showing acute malnutrition or health crises",
+    "ipc_relevance": [3, 4, 5]
   }
 }
-

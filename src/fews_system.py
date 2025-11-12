@@ -179,32 +179,47 @@ class FEWSSystem:
         self,
         context: str,
         region: str,
-        assessment: RegionRiskAssessment
-    ) -> Tuple[List[str], List[str]]:
+        assessment: RegionRiskAssessment,
+        livelihood_zone: str = "unknown"
+    ) -> Tuple[List[str], List[str], List[Dict]]:
         """
-        Detect shocks using structured keyword matching.
-        Returns shocks and mapped drivers.
+        Detect shocks using zone-specific structured keyword matching.
+        Returns shocks, mapped drivers, and detailed results.
         
         Args:
             context: Retrieved text context
             region: Region name
             assessment: IPC risk assessment
+            livelihood_zone: Livelihood system for zone-specific detection
         
         Returns:
-            Tuple of (shock_types, driver_names)
+            Tuple of (shock_types, driver_names, detailed_results)
         """
-        # Run keyword detection on context
-        detected = self.domain_knowledge.detect_shocks(context)
+        # Run zone-specific keyword detection
+        shock_types, detailed_results = self.domain_knowledge.detect_shocks_by_zone(
+            text=context,
+            livelihood_zone=livelihood_zone,
+            region=region,
+            ipc_phase=assessment.current_phase
+        )
         
         # Filter by confidence threshold
-        validated_shocks = [
-            shock_type for shock_type, confidence in detected
-            if confidence >= SHOCK_CONFIDENCE_THRESHOLD
-        ][:MAX_SHOCKS_TO_RETURN]
+        validated_shocks = []
+        validated_details = []
+        for i, shock_type in enumerate(shock_types):
+            detail = detailed_results[i]
+            if detail['confidence'] in ['high', 'medium']:
+                validated_shocks.append(shock_type)
+                validated_details.append(detail)
         
+        # Limit to top shocks
+        validated_shocks = validated_shocks[:MAX_SHOCKS_TO_RETURN]
+        validated_details = validated_details[:MAX_SHOCKS_TO_RETURN]
+        
+        # Map to drivers
         drivers = self.domain_knowledge.map_shocks_to_drivers(validated_shocks)
         
-        return validated_shocks, drivers
+        return validated_shocks, drivers, validated_details
     
     def setup_vector_stores(self, force_recreate: bool = False):
         """
@@ -580,12 +595,15 @@ class FEWSSystem:
                     "ipc_phase": assessment.current_phase
                 }
             
-            # Detect validated shocks BEFORE prompting LLM
-            validated_shock_types, validated_drivers = self._detect_validated_shocks(context, region, assessment)
+            # Detect validated shocks BEFORE prompting LLM (zone-specific detection)
+            livelihood_zone_for_detection = livelihood_info.livelihood_system if livelihood_info else "unknown"
+            validated_shock_types, validated_drivers, shock_details = self._detect_validated_shocks(
+                context, region, assessment, livelihood_zone_for_detection
+            )
             if not validated_shock_types:
                 missing_info_logger.info(
                     f"Region: {region} | IPC Phase: {assessment.current_phase} | "
-                    "Notice: No validated shocks detected via structured keyword matching."
+                    f"Notice: No validated shocks detected via structured keyword matching (zone: {livelihood_zone_for_detection})."
                 )
             
             # Build domain knowledge context for prompt (reference only)
@@ -846,21 +864,21 @@ Produce a structured, contradiction-free explanation.
                     f"Region: {region} | IPC Phase: {ipc_phase} | "
                     f"Issue: {str(e)}"
                 )
-                return {
-                    "region": region,
-                    "recommendations": (
+                    return {
+                        "region": region,
+                        "recommendations": (
                         f"For {region} with IPC Phase {ipc_phase}, insufficient context was retrieved "
                         f"from intervention literature ({str(e)}). Cannot produce evidence-based recommendations."
-                    ),
-                    "sources": [],
+                        ),
+                        "sources": [],
                     "limitations": str(e)
                 }
             except (VectorStoreError, RetrievalError) as e:
                 missing_info_logger.error(f"Region: {region} | Error: {str(e)}")
-                return {
-                    "region": region,
+                    return {
+                        "region": region,
                     "recommendations": f"Error accessing intervention literature: {str(e)}",
-                    "sources": [],
+                        "sources": [],
                     "limitations": str(e)
                 }
             
@@ -928,7 +946,7 @@ Produce a structured, contradiction-free explanation.
             ipc_phase_desc = 'Emergency' if ipc_phase >= 4 else 'Crisis' if ipc_phase >= 3 else 'Stressed'
             prompt = PromptTemplate(
                 input_variables=["region", "ipc_phase", "ipc_phase_desc", "drivers", "context", "intervention_context"],
-                template="""You are a humanitarian emergency response advisor.  
+                template="""You are a humanitarian emergency response advisor. 
 Your job is to recommend interventions for {region}, which is experiencing IPC Phase {ipc_phase}.
 
 AUTHORITATIVE DATA YOU MUST OBEY:
@@ -968,19 +986,19 @@ Use:
 - Trader credit
 - Market functionality thresholds
 
-E. Livelihood Protection  
+E. Livelihood Protection
 Use validated LEGS livestock actions and agricultural support.
 
-F. WASH and Health Linkages  
+F. WASH and Health Linkages
 Use Sphere WASH standards and emergency health linkages.
 
-G. Coordination Requirements  
+G. Coordination Requirements
 Cluster coordination, IPC-consistent decision-making, information sharing.
 
 H. Medium-Term Recovery  
 Driver-linked livelihood and resilience-building measures.
 
-I. Limitations  
+I. Limitations
 You may ONLY include:
 - "Intervention literature contained no relevant guidance" if context == empty.
 - Do NOT invent limitations.
