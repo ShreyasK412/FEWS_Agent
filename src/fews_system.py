@@ -528,25 +528,49 @@ class FEWSSystem:
         if "Afar" in assessment.geographic_full_name:
             region_variations.extend(["Afar", "pastoral", "northeastern Ethiopia"])
         
-        # Multi-query RAG retrieval strategy for better coverage
+        # Get admin region for geographic filtering
+        admin_region = assessment.region or ""
+        admin_region_lower = admin_region.lower()
+        
+        # Multi-query RAG retrieval strategy with geographic keywords
         queries = []
         
-        # Query 1: Geographic query with region hierarchy
-        geographic_query = f"{', '.join(region_variations[:3])} Ethiopia food security"
+        # Query 1: Geographic query with region hierarchy and explicit geographic context
+        if 'tigray' in admin_region_lower or 'amhara' in admin_region_lower:
+            geographic_query = f"{', '.join(region_variations[:3])} {admin_region} Tigray Amhara northern Ethiopia highland cropping food security"
+        elif 'somali' in admin_region_lower or 'borena' in admin_region_lower:
+            geographic_query = f"{', '.join(region_variations[:3])} {admin_region} Somali Borena southern pastoral food security"
+        else:
+            geographic_query = f"{', '.join(region_variations[:3])} {admin_region} Ethiopia food security"
         queries.append(("geographic", geographic_query))
         
-        # Query 2: Livelihood-specific query
+        # Query 2: Livelihood-specific query with zone context
         if livelihood_info:
-            livelihood_query = f"{livelihood_info.livelihood_system} {region_name} Ethiopia current conditions"
+            if 'tigray' in admin_region_lower or 'amhara' in admin_region_lower:
+                livelihood_query = f"{livelihood_info.livelihood_system} {region_name} {admin_region} northern highland cropping Ethiopia current conditions"
+            elif 'somali' in admin_region_lower or 'borena' in admin_region_lower:
+                livelihood_query = f"{livelihood_info.livelihood_system} {region_name} {admin_region} southern pastoral Ethiopia current conditions"
+            else:
+                livelihood_query = f"{livelihood_info.livelihood_system} {region_name} Ethiopia current conditions"
             queries.append(("livelihood", livelihood_query))
         
-        # Query 3: Seasonal query
+        # Query 3: Seasonal query with region-specific seasons
         if rainfall_info:
-            seasonal_query = f"{rainfall_info.dominant_season} {region_name} Ethiopia 2024 2025"
+            if 'tigray' in admin_region_lower or 'amhara' in admin_region_lower:
+                seasonal_query = f"{rainfall_info.dominant_season} kiremt meher {region_name} {admin_region} northern Ethiopia 2024 2025"
+            elif 'somali' in admin_region_lower or 'borena' in admin_region_lower:
+                seasonal_query = f"{rainfall_info.dominant_season} gu genna deyr hageya {region_name} {admin_region} southern pastoral 2024 2025"
+            else:
+                seasonal_query = f"{rainfall_info.dominant_season} {region_name} Ethiopia 2024 2025"
             queries.append(("seasonal", seasonal_query))
         
-        # Query 4: IPC phase-specific query
-        phase_query = f"IPC Phase {assessment.current_phase} {region_name} Ethiopia"
+        # Query 4: IPC phase-specific query with region context
+        if 'tigray' in admin_region_lower or 'amhara' in admin_region_lower:
+            phase_query = f"IPC Phase {assessment.current_phase} {region_name} {admin_region} Tigray Amhara northern Ethiopia conflict 2020-2022"
+        elif 'somali' in admin_region_lower or 'borena' in admin_region_lower:
+            phase_query = f"IPC Phase {assessment.current_phase} {region_name} {admin_region} Somali Borena southern pastoral"
+        else:
+            phase_query = f"IPC Phase {assessment.current_phase} {region_name} {admin_region} Ethiopia"
         queries.append(("phase", phase_query))
         
         # Retrieve relevant documents
@@ -596,7 +620,7 @@ class FEWSSystem:
                     unique_docs.append(doc)
 
             # Geographic filtering: Remove content about wrong regions
-            admin_region = assessment.region_name or assessment.region or ""
+            admin_region = assessment.region or ""
             filtered_docs = self._filter_chunks_by_geography(unique_docs, admin_region)
 
             # Limit to top chunks and build context
@@ -647,7 +671,7 @@ class FEWSSystem:
         )
 
         # Validate shocks by geography (remove shocks about wrong regions)
-        admin_region = assessment.region_name or assessment.region or ""
+        admin_region = assessment.region or ""
         validated_shock_types, validated_drivers = self._validate_shocks_geography(
             validated_shock_types, validated_drivers, shock_details, region, admin_region
         )
@@ -685,9 +709,35 @@ class FEWSSystem:
                     "context",
                     "validated_shocks",
                     "livelihood_system",
-                    "rainfall_season"
+                    "rainfall_season",
+                    "admin_region",
+                    "zone_name",
+                    "geographic_context",
+                    "rainfall_clarification"
                 ],
                 template="""You are a senior IPC Analyst. Your job is to explain WHY {region} is experiencing IPC Phase {ipc_phase} food insecurity.
+
+CRITICAL GEOGRAPHIC BOUNDARIES:
+This analysis is ONLY for {region} in {admin_region} Region.
+- {region} is in {admin_region} Region, {zone_name} Zone
+- Geographic context: {geographic_context}
+
+DO NOT include information about:
+❌ Borena Zone (southern Ethiopia, 1000+ km away)
+❌ Somali Region (eastern Ethiopia, 1000+ km away)
+❌ Borena-Somali border conflicts or displacement events
+❌ Any events >500km away from {admin_region} Region
+❌ Pastoral areas if {region} is in a highland cropping zone
+❌ Highland cropping areas if {region} is in a pastoral zone
+
+IF YOU SEE CONTENT IN THE RETRIEVED CONTEXT ABOUT:
+- "Borena-Somali border" → IGNORE IT (wrong region, 1000+ km away)
+- "Intercommunal conflict July 2025" → CHECK if it mentions {admin_region} Region (if not, ignore)
+- "288,000 displaced" → CHECK location (likely Borena-Somali, ignore if not {admin_region})
+- "Pastoral areas" → IGNORE if {region} is highland cropping
+- "Livestock/milk/pasture" → IGNORE if {region} is highland cropping
+
+ONLY analyze shocks and impacts that DIRECTLY affect {admin_region} Region.
 
 IMPORTANT — AUTHORITATIVE DOMAIN KNOWLEDGE VALUES:
 You are ALWAYS given the following fields directly from structured domain knowledge:
@@ -776,6 +826,11 @@ Produce a structured, contradiction-free explanation.
         if rainfall_info and rainfall_info.clarification:
             rainfall_clarification = f"CLARIFICATION: {rainfall_info.clarification}"
 
+        # Get geographic context for prompt
+        admin_region = assessment.region or ""
+        zone_name = assessment.zone or ""
+        geographic_context = assessment.geographic_full_name or f"{region}, {zone_name}, {admin_region}, Ethiopia"
+
         explanation = chain.invoke({
                 "region": region,
                 "ipc_phase": assessment.current_phase,
@@ -783,7 +838,10 @@ Produce a structured, contradiction-free explanation.
                 "context": context,
                 "livelihood_system": livelihood_system_for_prompt,
                 "rainfall_season": rainfall_season_for_prompt,
-                "rainfall_clarification": rainfall_clarification
+                "rainfall_clarification": rainfall_clarification,
+                "admin_region": admin_region,
+                "zone_name": zone_name,
+                "geographic_context": geographic_context
         })
         
         # Use validated drivers (already detected before prompting)
@@ -819,7 +877,8 @@ Produce a structured, contradiction-free explanation.
         admin_region: str
     ) -> List[Document]:
         """
-        Filter retrieved chunks to remove content about geographically irrelevant regions.
+        Aggressively filter retrieved chunks to remove content about geographically irrelevant regions.
+        Uses both exclusion keywords (wrong regions) and inclusion keywords (correct regions).
 
         Args:
             docs: Retrieved document chunks
@@ -834,34 +893,99 @@ Produce a structured, contradiction-free explanation.
         admin_region_lower = admin_region.lower()
         filtered_docs = []
 
-        # Define geographic exclusion rules
-        geographic_filters = {
-            'tigray': ['borena', 'somali', 'afar', 'dollo', 'korahe', 'gu/genna', 'deyr/hageya'],
-            'amhara': ['borena', 'somali', 'afar', 'dollo', 'korahe', 'gu/genna', 'deyr/hageya'],
-            'oromia': ['tigray', 'amhara'] if 'highland' in admin_region_lower or 'midland' in admin_region_lower else [],
-            'somali': ['tigray', 'amhara', 'oromia', 'snnpr', 'kiremt', 'belg'],
-            'afar': ['tigray', 'amhara', 'oromia', 'snnpr', 'kiremt', 'belg'],
-            'snnpr': ['tigray', 'amhara'] if 'highland' in admin_region_lower or 'midland' in admin_region_lower else []
+        # Define geographic exclusion and inclusion rules
+        geographic_rules = {
+            'tigray': {
+                'exclude': [
+                    'borena', 'somali region', 'somali', 'dollo', 'afder', 'korahe',
+                    'gu/genna', 'gu genna', 'deyr/hageya', 'deyr hageya', 'hageya',
+                    'borena-somali border', 'borena-somali', 'intercommunal conflict july 2025',
+                    'pastoral areas', 'southern pastoral', 'eastern pastoral',
+                    'livestock births', 'milk production', 'pasture conditions', 'animal health',
+                    '288,000 displaced', '288000 displaced'
+                ],
+                'include': [
+                    'tigray', 'amhara', 'northern', 'highland', 'cropping', 'kiremt', 'meher',
+                    'conflict 2020-2022', 'conflict 2020', 'conflict 2021', 'conflict 2022',
+                    'labor migration', 'fuel shortages', 'crop production', 'agriculture'
+                ]
+            },
+            'amhara': {
+                'exclude': [
+                    'borena', 'somali region', 'somali', 'dollo', 'afder', 'korahe',
+                    'gu/genna', 'gu genna', 'deyr/hageya', 'deyr hageya', 'hageya',
+                    'borena-somali border', 'borena-somali', 'intercommunal conflict july 2025',
+                    'pastoral areas', 'southern pastoral', 'eastern pastoral',
+                    'livestock births', 'milk production', 'pasture conditions', 'animal health',
+                    '288,000 displaced', '288000 displaced'
+                ],
+                'include': [
+                    'amhara', 'tigray', 'northern', 'highland', 'cropping', 'kiremt', 'meher',
+                    'conflict 2020-2022', 'conflict 2020', 'conflict 2021', 'conflict 2022',
+                    'labor migration', 'fuel shortages', 'crop production', 'agriculture'
+                ]
+            },
+            'somali': {
+                'exclude': [
+                    'tigray', 'amhara', 'northern', 'highland', 'kiremt', 'meher', 'belg',
+                    'conflict 2020-2022', 'conflict 2020', 'conflict 2021', 'conflict 2022'
+                ],
+                'include': [
+                    'somali', 'borena', 'southern', 'pastoral', 'gu/genna', 'gu genna',
+                    'deyr/hageya', 'deyr hageya', 'hageya', 'livestock', 'pasture'
+                ]
+            },
+            'oromia': {
+                'exclude': ['tigray', 'amhara'] if 'highland' in admin_region_lower or 'midland' in admin_region_lower else [],
+                'include': ['oromia', 'borena'] if 'borena' in admin_region_lower else ['oromia']
+            },
+            'afar': {
+                'exclude': ['tigray', 'amhara', 'oromia', 'snnpr', 'kiremt', 'belg'],
+                'include': ['afar', 'pastoral', 'northeastern']
+            },
+            'snnpr': {
+                'exclude': ['tigray', 'amhara'] if 'highland' in admin_region_lower or 'midland' in admin_region_lower else [],
+                'include': ['snnpr', 'southern nations']
+            }
         }
 
-        exclude_regions = geographic_filters.get(admin_region_lower, [])
+        rules = geographic_rules.get(admin_region_lower, {'exclude': [], 'include': []})
+        exclude_keywords = rules.get('exclude', [])
+        include_keywords = rules.get('include', [])
 
         for doc in docs:
             content_lower = doc.page_content.lower()
             is_relevant = True
+            exclusion_reason = None
 
-            # Check if chunk mentions excluded regions
-            for exclude_region in exclude_regions:
-                if exclude_region in content_lower:
-                    print(f"   🗺️  Filtered chunk mentioning '{exclude_region}' (irrelevant to {admin_region})")
+            # Check for exclusion keywords (strong filter - if found, exclude)
+            for exclude_kw in exclude_keywords:
+                if exclude_kw in content_lower:
+                    exclusion_reason = exclude_kw
                     is_relevant = False
                     break
 
+            # If not excluded, check for inclusion keywords (for Tigray/Amhara, require at least one)
+            if is_relevant and include_keywords:
+                has_include = any(kw in content_lower for kw in include_keywords)
+                if not has_include:
+                    # For northern regions, require inclusion keywords
+                    if admin_region_lower in ['tigray', 'amhara']:
+                        exclusion_reason = "no northern/highland keywords"
+                        is_relevant = False
+
             if is_relevant:
                 filtered_docs.append(doc)
+            else:
+                print(f"   🗺️  Filtered chunk: '{exclusion_reason}' (irrelevant to {admin_region})")
 
         if len(filtered_docs) < len(docs):
             print(f"   🗺️  Geographic filtering: {len(docs)} → {len(filtered_docs)} chunks")
+
+        # If filtering removed everything, keep top 3 unfiltered (with warning)
+        if not filtered_docs and docs:
+            print(f"   ⚠️  Geographic filtering removed all chunks - using top 3 unfiltered (may contain wrong region content)")
+            filtered_docs = docs[:3]
 
         return filtered_docs
 
