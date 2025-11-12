@@ -2,8 +2,8 @@
 Configuration constants for FEWS system.
 """
 # Retrieval configuration
-MIN_RELEVANT_CHUNKS = 3
-MAX_CONTEXT_CHUNKS = 6
+MIN_RELEVANT_CHUNKS = 1  # Minimum chunks required for analysis (lowered for sparse data)
+MAX_CONTEXT_CHUNKS = 8  # Maximum chunks to use in context (increased for better coverage)
 CHUNK_SIZE = 600
 CHUNK_OVERLAP = 200
 

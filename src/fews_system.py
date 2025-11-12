@@ -573,22 +573,24 @@ class FEWSSystem:
             all_docs = []
             for query_type, query in queries:
                 try:
-                    docs, _ = self._retrieve_context(
-                        query=query,
-                        vectorstore=self.reports_vectorstore,
-                        k=3,  # Top 3 from each query
-                        min_chunks=0  # Don't enforce minimum for individual queries
-                    )
-                    all_docs.extend(docs)
+                    # Direct retrieval without min_chunks enforcement
+                    if self.reports_vectorstore:
+                        retriever = self.reports_vectorstore.as_retriever(search_kwargs={"k": 3})
+                        docs = retriever.invoke(query)
+                        if docs:
+                            all_docs.extend(docs)
+                            print(f"   📥 Query '{query_type}': retrieved {len(docs)} chunks")
                 except Exception as e:
                     # Continue with other queries even if one fails
+                    print(f"   ⚠️  Query '{query_type}' failed: {str(e)[:50]}")
                     pass
             
-            # Deduplicate by content hash
+            # Deduplicate by content hash (using more content for better uniqueness)
             seen_hashes = set()
             unique_docs = []
             for doc in all_docs:
-                content_hash = hash(doc.page_content[:100])
+                # Use first 300 chars instead of 100 to reduce false duplicates
+                content_hash = hash(doc.page_content[:300] if len(doc.page_content) >= 300 else doc.page_content)
                 if content_hash not in seen_hashes:
                     seen_hashes.add(content_hash)
                     unique_docs.append(doc)
@@ -604,24 +606,24 @@ class FEWSSystem:
                     f"Retrieved only {len(docs)} chunks, minimum required: {MIN_RELEVANT_CHUNKS}"
                 )
         except InsufficientDataError as e:
-            explanation = (
-                f"Region {region} has IPC Phase {assessment.current_phase}, "
-                f"indicating {'Emergency' if assessment.current_phase >= 4 else 'Crisis' if assessment.current_phase >= 3 else 'Stressed'} conditions. "
+                explanation = (
+                    f"Region {region} has IPC Phase {assessment.current_phase}, "
+                    f"indicating {'Emergency' if assessment.current_phase >= 4 else 'Crisis' if assessment.current_phase >= 3 else 'Stressed'} conditions. "
                 f"However, insufficient context was retrieved from situation reports "
                 f"({str(e)}). Cannot produce an evidence-based explanation."
-            )
-            missing_info_logger.warning(
-                f"Region: {region} | IPC Phase: {assessment.current_phase} | "
+                )
+                missing_info_logger.warning(
+                    f"Region: {region} | IPC Phase: {assessment.current_phase} | "
                 f"Issue: {str(e)}"
-            )
-            return {
-                "region": region,
-                "explanation": explanation,
-                "drivers": [],
-                "sources": [],
-                "data_quality": "insufficient",
-                "ipc_phase": assessment.current_phase
-            }
+                )
+                return {
+                    "region": region,
+                    "explanation": explanation,
+                    "drivers": [],
+                    "sources": [],
+                    "data_quality": "insufficient",
+                    "ipc_phase": assessment.current_phase
+                }
         except (VectorStoreError, RetrievalError) as e:
             explanation = f"Error accessing situation reports: {str(e)}"
             missing_info_logger.error(f"Region: {region} | Error: {str(e)}")
@@ -631,8 +633,8 @@ class FEWSSystem:
                 "drivers": [],
                 "sources": [],
                 "data_quality": "error",
-                "ipc_phase": assessment.current_phase
-            }
+                    "ipc_phase": assessment.current_phase
+                }
             
             # Detect validated shocks BEFORE prompting LLM (zone-specific detection)
             livelihood_zone_for_detection = livelihood_info.livelihood_system if livelihood_info else "unknown"
