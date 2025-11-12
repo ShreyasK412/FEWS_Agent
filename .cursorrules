@@ -1,0 +1,41 @@
+# FEWS System Refactoring Rules
+
+## Core Principles
+
+1. **No Hallucinations**: LLM must only use retrieved text + validated domain knowledge
+2. **Hard Domain Knowledge Enforcement**: Livelihoods, seasons, shocks MUST come from domain knowledge files
+3. **Structured Detection**: Shock detection happens BEFORE prompting, not during
+4. **Retrieval Sufficiency**: Check minimum chunks before proceeding
+5. **IPC Framework Alignment**: Outputs must follow strict IPC analytical framework
+
+## Code Quality Standards
+
+- Type hints on all functions
+- Functions < 75 lines
+- No silent errors (use exceptions)
+- Constants in `src/config.py`
+- Custom exceptions in `src/exceptions.py`
+- Unified logging throughout
+
+## Domain Knowledge Rules
+
+- Livelihood systems: ONLY from `data/domain/livelihood_systems.csv`
+- Rainfall seasons: ONLY from `data/domain/rainfall_seasons.csv`
+- Shocks: ONLY from `data/domain/shock_ontology.json` keyword detection
+- Interventions: MUST use `data/domain/driver_interventions.json` mappings
+
+## Retrieval Standards
+
+- Minimum 3 chunks required for analysis
+- Maximum 6 chunks per query
+- Chunk size: 600 characters
+- Deduplicate chunks before use
+- Standardize query construction
+
+## Prompt Constraints
+
+- Explicitly reference domain knowledge in prompts
+- Forbid LLM from inferring livelihoods/seasons/shocks
+- Require structured output format (no deviations)
+- State limitations explicitly when data missing
+
