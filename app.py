@@ -10,6 +10,7 @@ import os
 # Import our RAG system
 from rag_system import RAGSystem
 from document_processor import DocumentProcessor
+from models.risk_predictor import RiskAssessment
 
 app = Flask(__name__)
 CORS(app)
@@ -25,7 +26,7 @@ def initialize_rag_system():
     
     # Configuration
     MODEL_NAME = "llama3.2"
-    DATA_DIRECTORY = "."
+    DATA_DIRECTORY = "documents"  # PDFs are now in documents/ folder
     CHROMA_DB_DIR = "./chroma_db"
     
     # Check if vector store exists
@@ -110,32 +111,84 @@ def query():
                 'error': 'No question provided'
             }), 400
         
-        # Query the RAG system
-        result = rag_system.query(question)
+        # Check for special commands
+        question_lower = question.lower()
         
-        # Get intent info
-        intent_info = result.get('intent_info', {})
-        intent = intent_info.get('intent', 'unknown')
-        is_scenario = intent_info.get('is_scenario', False)
-        
-        # Format response
-        response = {
-            'answer': result.get('result', ''),
-            'sources': [],
-            'intent': intent,
-            'is_scenario': is_scenario
-        }
-        
-        # Extract sources
-        sources = result.get('source_documents', [])
-        for doc in sources:
-            response['sources'].append({
-                'source': doc.metadata.get('source', 'Unknown'),
-                'type': doc.metadata.get('type', 'Unknown'),
-                'preview': doc.page_content[:200] + '...' if len(doc.page_content) > 200 else doc.page_content
+        # Function 1: Identify at-risk regions
+        if question_lower in ['risk', 'identify risk', 'at risk', 'regions at risk']:
+            assessments = rag_system.identify_at_risk_regions()
+            
+            # Format assessments for JSON
+            assessments_data = []
+            for a in assessments:
+                assessments_data.append({
+                    'region': a.region_id,
+                    'risk_level': a.risk_level,
+                    'ipc_phase': a.ipc_phase_prediction,
+                    'confidence': a.confidence_score,
+                    'key_drivers': a.key_drivers,
+                    'population_at_risk': a.population_at_risk
+                })
+            
+            return jsonify({
+                'answer': f'Identified {len(assessments)} regions',
+                'assessments': assessments_data,
+                'type': 'risk_assessment'
             })
         
-        return jsonify(response)
+        # Function 2: Recommend interventions
+        elif question_lower.startswith('interventions'):
+            parts = question_lower.split()
+            region = ' '.join(parts[1:]) if len(parts) > 1 else None
+            
+            if not region:
+                return jsonify({
+                    'error': 'Please specify a region',
+                    'answer': 'Usage: "interventions Tigray" or "interventions Amhara"'
+                }), 400
+            
+            result = rag_system.recommend_interventions(region)
+            
+            return jsonify({
+                'answer': result['interventions'],
+                'region': result['region'],
+                'risk_assessment': {
+                    'risk_level': result['risk_assessment'].risk_level,
+                    'ipc_phase': result['risk_assessment'].ipc_phase_prediction,
+                    'key_drivers': result['risk_assessment'].key_drivers
+                },
+                'sources': result['sources'],
+                'type': 'interventions'
+            })
+        
+        # General query
+        else:
+            result = rag_system.query(question)
+            
+            # Get intent info
+            intent_info = result.get('intent_info', {})
+            intent = intent_info.get('intent', 'unknown')
+            is_scenario = intent_info.get('is_scenario', False)
+            
+            # Format response
+            response = {
+                'answer': result.get('result', ''),
+                'sources': [],
+                'intent': intent,
+                'is_scenario': is_scenario,
+                'type': 'general'
+            }
+            
+            # Extract sources
+            sources = result.get('source_documents', [])
+            for doc in sources:
+                response['sources'].append({
+                    'source': doc.metadata.get('source', 'Unknown'),
+                    'type': doc.metadata.get('type', 'Unknown'),
+                    'preview': doc.page_content[:200] + '...' if len(doc.page_content) > 200 else doc.page_content
+                })
+            
+            return jsonify(response)
     
     except Exception as e:
         return jsonify({

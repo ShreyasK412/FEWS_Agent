@@ -1,0 +1,28 @@
+# Intervention Playbook
+# Maps risk drivers to evidence-based interventions
+
+interventions:
+  - driver: "price_increase"
+    intervention: "Market support and cash transfers"
+    ipc_phase_applicable: [3, 4, 5]
+    ops_requirements: ["market access", "cash transfer system"]
+    evidence_link: "IPC Technical Manual"
+  
+  - driver: "rainfall_deficit"
+    intervention: "Emergency food assistance and water trucking"
+    ipc_phase_applicable: [4, 5]
+    ops_requirements: ["food stocks", "distribution network", "water access"]
+    evidence_link: "FEWS NET Guidelines"
+  
+  - driver: "conflict_escalation"
+    intervention: "Protection services and emergency food"
+    ipc_phase_applicable: [4, 5]
+    ops_requirements: ["security", "mobile distribution", "protection services"]
+    evidence_link: "Humanitarian Response Guidelines"
+  
+  - driver: "multi_driver"
+    intervention: "Multi-sectoral response"
+    ipc_phase_applicable: [4, 5]
+    ops_requirements: ["coordination", "multiple sectors", "integrated approach"]
+    evidence_link: "Cluster Coordination Guidelines"
+

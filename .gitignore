@@ -11,6 +11,12 @@ ENV/
 
 # Vector database
 chroma_db/
+chroma_db_reports/
+chroma_db_interventions/
+
+# Logs
+*.log
+missing_info.log
 
 # IDE
 .vscode/

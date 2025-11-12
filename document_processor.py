@@ -207,8 +207,11 @@ Average prices by commodity in {region}:
         
         return chunks
     
-    def process_all_documents(self, directory: str = ".") -> List[Dict[str, str]]:
-        """Process all PDFs and CSV files in the directory."""
+    def process_all_documents(self, directory: str = "documents") -> List[Dict[str, str]]:
+        """
+        Process all documents in directory.
+        Defaults to 'documents/' folder.
+        """
         all_chunks = []
         directory_path = Path(directory)
         
