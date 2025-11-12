@@ -903,21 +903,21 @@ Produce a structured, contradiction-free explanation.
                     f"Region: {region} | IPC Phase: {ipc_phase} | "
                     f"Issue: {str(e)}"
                 )
-                    return {
-                        "region": region,
-                        "recommendations": (
+                return {
+                    "region": region,
+                    "recommendations": (
                         f"For {region} with IPC Phase {ipc_phase}, insufficient context was retrieved "
                         f"from intervention literature ({str(e)}). Cannot produce evidence-based recommendations."
-                        ),
-                        "sources": [],
+                    ),
+                    "sources": [],
                     "limitations": str(e)
                 }
             except (VectorStoreError, RetrievalError) as e:
                 missing_info_logger.error(f"Region: {region} | Error: {str(e)}")
-                    return {
-                        "region": region,
+                return {
+                    "region": region,
                     "recommendations": f"Error accessing intervention literature: {str(e)}",
-                        "sources": [],
+                    "sources": [],
                     "limitations": str(e)
                 }
             
