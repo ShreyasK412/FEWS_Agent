@@ -157,6 +157,20 @@
     ],
     "category": "economic",
     "description": "Macroeconomic shocks affecting purchasing power and economic stability"
+  },
+  "nutrition": {
+    "keywords": [
+      "gam",
+      "sam",
+      "mam",
+      "acute malnutrition",
+      "wasting",
+      "stunting",
+      "nutrition",
+      "malnutrition"
+    ],
+    "category": "nutrition",
+    "description": "Deteriorating nutrition outcomes indicating stress on food security"
   }
 }
 

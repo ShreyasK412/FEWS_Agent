@@ -99,6 +99,9 @@ class FEWSSystem:
         self.embeddings = None
         self.llm = None
         
+        # Retrieval configuration
+        self.retrieval_k = 8
+        
         # Initialize
         self._initialize()
     
@@ -117,7 +120,7 @@ class FEWSSystem:
         self,
         query: str,
         vectorstore: Optional[Chroma],
-        k: int = MAX_CONTEXT_CHUNKS,
+        k: Optional[int] = None,
         min_chunks: int = MIN_RELEVANT_CHUNKS
     ) -> Tuple[List[Document], str]:
         """
@@ -140,9 +143,12 @@ class FEWSSystem:
         if vectorstore is None:
             raise VectorStoreError("Vector store is not initialized")
         
+        if k is None:
+            k = self.retrieval_k
+        
         try:
             retriever = vectorstore.as_retriever(search_kwargs={"k": k})
-            docs = retriever.get_relevant_documents(query)
+            docs = retriever.invoke(query)
         except Exception as e:
             raise RetrievalError(f"Failed to retrieve documents: {e}")
         
@@ -464,7 +470,12 @@ class FEWSSystem:
             zone=zone_name,
             admin=admin_name
         )
-        livelihood_system = livelihood_info.livelihood_system if livelihood_info else None
+        if livelihood_info:
+            livelihood_system_for_prompt = f"{livelihood_info.livelihood_system} ({livelihood_info.elevation_category})"
+            livelihood_notes = livelihood_info.notes if isinstance(livelihood_info.notes, str) else ""
+        else:
+            livelihood_system_for_prompt = "No livelihood data available for this region."
+            livelihood_notes = ""
         
         # Get rainfall season from domain knowledge
         rainfall_info = self.domain_knowledge.get_rainfall_season(
@@ -472,7 +483,17 @@ class FEWSSystem:
             zone=zone_name,
             admin=admin_name
         )
-        dominant_season = rainfall_info.dominant_season if rainfall_info else None
+        if rainfall_info:
+            if rainfall_info.secondary_season:
+                rainfall_season_for_prompt = f"{rainfall_info.dominant_season} (Secondary: {rainfall_info.secondary_season})"
+            else:
+                rainfall_season_for_prompt = rainfall_info.dominant_season
+            rainfall_notes = rainfall_info.notes if isinstance(rainfall_info.notes, str) else ""
+            rainfall_months = rainfall_info.season_months if isinstance(rainfall_info.season_months, str) else ""
+        else:
+            rainfall_season_for_prompt = "No rainfall season data available for this region."
+            rainfall_notes = ""
+            rainfall_months = ""
         
         # Build expanded query with region context
         region_variations = []
@@ -560,97 +581,64 @@ class FEWSSystem:
                 }
             
             # Detect validated shocks BEFORE prompting LLM
-            shock_types, validated_drivers = self._detect_validated_shocks(context, region, assessment)
-            if not shock_types:
+            validated_shock_types, validated_drivers = self._detect_validated_shocks(context, region, assessment)
+            if not validated_shock_types:
                 missing_info_logger.info(
                     f"Region: {region} | IPC Phase: {assessment.current_phase} | "
                     "Notice: No validated shocks detected via structured keyword matching."
                 )
             
-            # Build domain knowledge context for prompt (MANDATORY - LLM cannot infer these)
-            domain_context = ""
+            # Build domain knowledge context for prompt (reference only)
+            domain_context_parts: List[str] = []
             if livelihood_info:
-                domain_context += (
-                    f"\nLIVELIHOOD SYSTEM (MANDATORY - domain knowledge): "
-                    f"{livelihood_info.livelihood_system} ({livelihood_info.elevation_category}). "
-                    f"Notes: {livelihood_info.notes}\n"
-                    "  → You MUST use this livelihood system. Do NOT infer or guess a different one.\n"
+                domain_context_parts.append(
+                    f"LIVELIHOOD DETAILS: {livelihood_info.livelihood_system} "
+                    f"({livelihood_info.elevation_category}). Notes: {livelihood_info.notes}"
                 )
-            else:
-                domain_context += (
-                    "\nLIVELIHOOD SYSTEM: Not found in domain knowledge. "
-                    "Use 'Unknown livelihood system' and do NOT infer another system.\n"
-                )
-            
             if rainfall_info:
-                secondary = f", Secondary: {rainfall_info.secondary_season}" if rainfall_info.secondary_season else ""
-                domain_context += (
-                    f"\nRAINFALL SEASON (MANDATORY - domain knowledge): "
-                    f"{rainfall_info.dominant_season}{secondary} "
-                    f"({rainfall_info.season_months}). Notes: {rainfall_info.notes}\n"
-                    "  → You MUST use these season names. Do NOT introduce other seasons.\n"
-                )
-            else:
-                domain_context += (
-                    "\nRAINFALL SEASON: Not found in domain knowledge. "
-                    "Use neutral language such as 'rainfall anomalies'. Do NOT name specific seasons.\n"
-                )
-            
-            if shock_types:
-                domain_context += (
-                    f"\nVALIDATED SHOCKS (MANDATORY - structured detection): {', '.join(shock_types)}\n"
-                    "  → You MUST only discuss these shocks. Do NOT add shocks not in this list.\n"
-                )
-            else:
-                domain_context += (
-                    "\nVALIDATED SHOCKS: None detected via structured keyword matching.\n"
-                    "  → State clearly that no validated shocks were identified and avoid naming specific drivers.\n"
-                )
-            
+                rainfall_detail = f"{rainfall_info.dominant_season}"
+                if rainfall_info.secondary_season:
+                    rainfall_detail += f" | Secondary: {rainfall_info.secondary_season}"
+                rainfall_detail += f". Months: {rainfall_info.season_months}. Notes: {rainfall_info.notes}"
+                domain_context_parts.append(f"RAINFALL DETAILS: {rainfall_detail}")
+            if validated_shock_types:
+                domain_context_parts.append(f"VALIDATED SHOCK LABELS: {', '.join(validated_shock_types)}")
             if validated_drivers:
-                domain_context += (
-                    f"VALIDATED DRIVER LABELS: {', '.join(validated_drivers)}. "
-                    "Use these labels when discussing impacts.\n"
-                )
+                domain_context_parts.append(f"VALIDATED DRIVER LABELS: {', '.join(validated_drivers)}")
+            domain_context = "\n".join(domain_context_parts)
             
             # Use LLM to extract drivers with strict IPC-aligned prompt
             prompt = PromptTemplate(
-                input_variables=["region", "ipc_phase", "context", "domain_context", "validated_shocks"],
+                input_variables=[
+                    "region",
+                    "ipc_phase",
+                    "context",
+                    "domain_context",
+                    "validated_shocks",
+                    "livelihood_system",
+                    "rainfall_season"
+                ],
                 template="""You are a senior Integrated Food Security Phase Classification (IPC) analyst. 
 Your task is to explain WHY {region} is experiencing IPC Phase {ipc_phase} food insecurity.
 
-CRITICAL CONSTRAINT: You MUST use ONLY the information provided in:
-1. DOMAIN KNOWLEDGE CONTEXT (below) - these are MANDATORY lookups from CSV/JSON files
-2. CONTEXT FROM SITUATION REPORTS (below) - retrieved text from vector database
+You MUST anchor all reasoning to the structured inputs below. They override any inference from narrative text.
 
-You MUST NOT infer, guess, or invent:
-- Livelihood systems (MUST use domain knowledge CSV lookup)
-- Rainfall seasons (MUST use domain knowledge CSV lookup)
-- Shocks (MUST use only validated shocks from structured detection)
-- IPC Phase (MUST use the provided IPC phase)
+LIVELIHOOD SYSTEM: {livelihood_system}
+RAINFALL SEASON: {rainfall_season}
+IPC PHASE FOR THIS REGION: {ipc_phase}
+VALIDATED SHOCKS FOR THIS REGION: {validated_shocks}
 
-===========================================================
-CRITICAL CONSTRAINTS (MANDATORY)
-===========================================================
+You MUST treat the above values as complete and authoritative:
+- Use the livelihood system exactly as written. Do NOT say it is unknown or unclear unless it explicitly states "No livelihood data available for this region."
+- Use the rainfall season exactly as written. Do NOT substitute different seasons. If it states "No rainfall season data available..." you may only reference rainfall generically.
+- Treat the IPC phase as definitive. You may NOT claim the phase is unknown, misaligned, or cannot be determined.
+- The validated shocks list is the full and final set of shocks you are allowed to discuss.
+  * If the list is empty, you MUST say “No validated shocks detected.” and you MUST NOT speculate about other shocks.
+  * If the list is not empty, you MUST list ONLY these shocks and MUST NOT say shocks are missing or unknown.
 
-1. LIVELIHOOD SYSTEM:
-   - You MUST use the livelihood system specified in DOMAIN KNOWLEDGE CONTEXT.
-   - If it says "Unknown livelihood system", state that explicitly.
-   - DO NOT infer or guess a livelihood system.
-
-2. RAINFALL SEASON:
-   - You MUST use the rainfall season specified in DOMAIN KNOWLEDGE CONTEXT.
-   - If it says to use neutral language, use "below-average rainfall" or "rainfall anomalies".
-   - DO NOT name seasons (kiremt, deyr/hageya, gu/genna) unless explicitly provided.
-
-3. SHOCKS:
-   - You MUST only discuss shocks listed in VALIDATED SHOCKS.
-   - DO NOT add shocks not in that list, even if context mentions them.
-   - If validated shocks list is empty, state "No validated shocks detected via structured keyword matching."
-
-4. IPC PHASE:
-   - You MUST treat {region} as IPC Phase {ipc_phase}.
-   - You may discuss evidence gaps, but you MUST NOT state that the IPC phase is unknown or misaligned.
+You MUST use ONLY:
+1. DOMAIN KNOWLEDGE CONTEXT (below) - reference information to support explanations
+2. CONTEXT FROM SITUATION REPORTS (below) - retrieved narrative evidence
 
 ===========================================================
 MANDATORY ANALYSIS FRAMEWORK (MUST FOLLOW THIS EXACT ORDER)
@@ -660,51 +648,43 @@ A. Overview
    - Brief summary of the situation
 
 B. Livelihood System
-   - State the livelihood system from DOMAIN KNOWLEDGE CONTEXT
-   - Explain why this system matters for food access
-   - DO NOT infer a different livelihood system
+   - Restate the livelihood system from LIVELIHOOD SYSTEM above
+   - Explain why this system matters for food access using contextual evidence
 
 C. Seasonal Calendar
-   - State the rainfall season from DOMAIN KNOWLEDGE CONTEXT
-   - If not provided, use neutral language without naming seasons
-   - DO NOT infer season names
+   - Restate the rainfall season from RAINFALL SEASON above
+   - If rainfall season data is unavailable, use neutral rainfall language without naming seasons
 
 D. Shocks
-   - List ONLY the validated shocks from VALIDATED SHOCKS
-   - For each shock, cite evidence from CONTEXT FROM SITUATION REPORTS
-   - DO NOT add shocks not in the validated list
-   - If VALIDATED SHOCKS indicates none, state this explicitly and skip naming shocks
+   - If VALIDATED SHOCKS is empty, state “No validated shocks detected.”
+   - If not empty, list ONLY those shocks and cite evidence from CONTEXT FROM SITUATION REPORTS
+   - NEVER add shocks that are not in the validated list
 
 E. Livelihood Impacts
-   - Explain how shocks affect agricultural production, livestock, labor markets, market access
-   - Base explanations on CONTEXT FROM SITUATION REPORTS
+   - Describe impacts on production, livestock, labor, and markets ONLY if the retrieved context provides explicit evidence.
+   - If no evidence exists, state: “No specific livelihood impact details were found in the retrieved reports.”
 
 F. Food Access and Consumption
-   - Describe consumption gaps, meal frequency, dietary diversity, coping strategies
-   - Base on CONTEXT FROM SITUATION REPORTS
+   - Discuss consumption gaps, meal frequency, dietary diversity, or coping strategies ONLY if explicitly mentioned in the context.
+   - If not mentioned, state: “No specific information about consumption gaps or coping strategies was found in the retrieved reports.”
 
 G. Nutrition & Health
-   - Identify GAM/SAM, disease outbreaks, water stress if mentioned in context
-   - If not mentioned, state "No specific nutrition/health data found"
+   - Discuss GAM/SAM, malnutrition, or health outcomes ONLY if the context explicitly mentions them.
+   - If not mentioned, state: “No specific nutrition or health information was found in the retrieved reports.”
 
 H. IPC Alignment
-   - Link evidence to IPC Phase {ipc_phase} outcomes
-   - Phase 3 → Crisis: consumption gaps, livelihood protection deficits
-   - Phase 4 → Emergency: extreme food deficits, acute malnutrition, asset collapse
-   - Phase 5 → Catastrophe/Famine: near-complete food consumption failure
+   - Link available evidence to IPC Phase {ipc_phase} outcomes.
+   - You MUST affirm that the region is IPC Phase {ipc_phase}; you may discuss evidence gaps but may NOT claim misalignment or uncertainty about the phase.
 
 I. Limitations
-   - State if {region} is not directly mentioned in context
-   - State if domain knowledge is missing
-   - State if validated shocks list is empty
-   - DO NOT infer missing information
+   - Mention missing livelihood or rainfall data ONLY if the structured values above state “No ... data available.”
+   - Mention missing shocks ONLY if VALIDATED SHOCKS is empty.
+   - State if {region} is not directly named in the retrieved context.
+   - NEVER contradict the provided livelihood system, rainfall season, IPC phase, or validated shocks.
 
 ===========================================================
-DOMAIN KNOWLEDGE CONTEXT (MANDATORY - DO NOT DEVIATE):
+DOMAIN KNOWLEDGE CONTEXT (reference only):
 {domain_context}
-
-VALIDATED SHOCKS (MANDATORY - ONLY DISCUSS THESE):
-{validated_shocks}
 
 CONTEXT FROM SITUATION REPORTS:
 {context}
@@ -714,8 +694,8 @@ Produce a detailed, structured IPC-style analytical narrative following the exac
             )
             
             chain = prompt | self.llm
-            if shock_types:
-                validated_shocks_str = ", ".join(shock_types)
+            if validated_shock_types:
+                validated_shocks_str = ", ".join(validated_shock_types)
             else:
                 validated_shocks_str = "None detected via structured keyword matching"
             
@@ -724,7 +704,9 @@ Produce a detailed, structured IPC-style analytical narrative following the exac
                 "ipc_phase": assessment.current_phase,
                 "domain_context": domain_context,
                 "validated_shocks": validated_shocks_str,
-                "context": context
+                "context": context,
+                "livelihood_system": livelihood_system_for_prompt,
+                "rainfall_season": rainfall_season_for_prompt
             })
             
             # Use validated drivers (already detected before prompting)
@@ -733,7 +715,7 @@ Produce a detailed, structured IPC-style analytical narrative following the exac
             
             # Check if explanation indicates insufficient data
             data_quality = "sufficient"
-            if not shock_types:
+            if not validated_shock_types:
                 data_quality = "insufficient_shock_evidence"
             if "cannot find" in explanation_lower or "not find" in explanation_lower or "insufficient" in explanation_lower:
                 data_quality = "insufficient"
@@ -864,7 +846,7 @@ Produce a detailed, structured IPC-style analytical narrative following the exac
                 docs, context = self._retrieve_context(
                     query=query,
                     vectorstore=self.interventions_vectorstore,
-                    k=MAX_CONTEXT_CHUNKS,
+                    k=self.retrieval_k,
                     min_chunks=MIN_RELEVANT_CHUNKS
                 )
             except InsufficientDataError as e:
