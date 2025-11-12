@@ -535,43 +535,57 @@ class FEWSSystem:
         # Multi-query RAG retrieval strategy with geographic keywords
         queries = []
         
-        # Query 1: Geographic query with region hierarchy and explicit geographic context
+        # Build more specific queries with targeted terms
+        current_year = "2025"
+        zone_name_for_query = zone_name if zone_name else ""
+        
+        # Query 1: Geographic + temporal
         if 'tigray' in admin_region_lower or 'amhara' in admin_region_lower:
-            geographic_query = f"{', '.join(region_variations[:3])} {admin_region} Tigray Amhara northern Ethiopia highland cropping food security"
+            geographic_query = f"{region_name} {admin_region} {zone_name_for_query} food security {current_year}"
         elif 'somali' in admin_region_lower or 'borena' in admin_region_lower:
-            geographic_query = f"{', '.join(region_variations[:3])} {admin_region} Somali Borena southern pastoral food security"
+            geographic_query = f"{region_name} {admin_region} {zone_name_for_query} food security {current_year}"
         else:
-            geographic_query = f"{', '.join(region_variations[:3])} {admin_region} Ethiopia food security"
+            geographic_query = f"{region_name} {admin_region} {zone_name_for_query} Ethiopia food security {current_year}"
         queries.append(("geographic", geographic_query))
         
-        # Query 2: Livelihood-specific query with zone context
+        # Query 2: Livelihood + shocks
         if livelihood_info:
             if 'tigray' in admin_region_lower or 'amhara' in admin_region_lower:
-                livelihood_query = f"{livelihood_info.livelihood_system} {region_name} {admin_region} northern highland cropping Ethiopia current conditions"
+                livelihood_query = f"{livelihood_info.livelihood_system} {admin_region} delayed rains conflict {current_year}"
             elif 'somali' in admin_region_lower or 'borena' in admin_region_lower:
-                livelihood_query = f"{livelihood_info.livelihood_system} {region_name} {admin_region} southern pastoral Ethiopia current conditions"
+                livelihood_query = f"{livelihood_info.livelihood_system} {admin_region} displacement pastoral {current_year}"
             else:
                 livelihood_query = f"{livelihood_info.livelihood_system} {region_name} Ethiopia current conditions"
             queries.append(("livelihood", livelihood_query))
         
-        # Query 3: Seasonal query with region-specific seasons
+        # Query 3: Seasonal + regional
         if rainfall_info:
             if 'tigray' in admin_region_lower or 'amhara' in admin_region_lower:
-                seasonal_query = f"{rainfall_info.dominant_season} kiremt meher {region_name} {admin_region} northern Ethiopia 2024 2025"
+                seasonal_query = f"{rainfall_info.dominant_season} rainfall {admin_region} harvest production {current_year}"
             elif 'somali' in admin_region_lower or 'borena' in admin_region_lower:
-                seasonal_query = f"{rainfall_info.dominant_season} gu genna deyr hageya {region_name} {admin_region} southern pastoral 2024 2025"
+                seasonal_query = f"{rainfall_info.dominant_season} {admin_region} pastoral {current_year}"
             else:
-                seasonal_query = f"{rainfall_info.dominant_season} {region_name} Ethiopia 2024 2025"
+                seasonal_query = f"{rainfall_info.dominant_season} {region_name} Ethiopia {current_year}"
             queries.append(("seasonal", seasonal_query))
         
-        # Query 4: IPC phase-specific query with region context
+        # Query 4: IPC + drivers
         if 'tigray' in admin_region_lower or 'amhara' in admin_region_lower:
-            phase_query = f"IPC Phase {assessment.current_phase} {region_name} {admin_region} Tigray Amhara northern Ethiopia conflict 2020-2022"
+            phase_query = f"IPC Phase {assessment.current_phase} {admin_region} labor migration market access"
         elif 'somali' in admin_region_lower or 'borena' in admin_region_lower:
-            phase_query = f"IPC Phase {assessment.current_phase} {region_name} {admin_region} Somali Borena southern pastoral"
+            phase_query = f"IPC Phase {assessment.current_phase} {admin_region} displacement pastoral"
         else:
             phase_query = f"IPC Phase {assessment.current_phase} {region_name} {admin_region} Ethiopia"
         queries.append(("phase", phase_query))
+        
+        # Query 5: Conflict-specific (for northern regions) or displacement (for pastoral)
+        if 'tigray' in admin_region_lower or 'amhara' in admin_region_lower:
+            conflict_query = f"{admin_region} conflict fuel shortage road blockage"
+            queries.append(("conflict", conflict_query))
+        elif 'somali' in admin_region_lower or 'borena' in admin_region_lower:
+            displacement_query = f"{admin_region} displacement pastoral"
+            queries.append(("displacement", displacement_query))
+        
+        missing_info_logger.info(f"Using {len(queries)} targeted queries for {region}")
         
         # Retrieve relevant documents
         if self.reports_vectorstore is None:
@@ -623,6 +637,19 @@ class FEWSSystem:
             admin_region = assessment.region or ""
             filtered_docs = self._filter_chunks_by_geography(unique_docs, admin_region)
 
+            # Log retrieved content for debugging
+            missing_info_logger.info(f"Retrieved {len(all_docs)} total chunks, {len(unique_docs)} after deduplication, {len(filtered_docs)} after geographic filtering")
+            for i, chunk in enumerate(filtered_docs[:3]):
+                preview = chunk.page_content[:150].replace('\n', ' ')
+                missing_info_logger.debug(f"Chunk {i+1} preview: {preview}...")
+
+            # Check if chunks mention the target region
+            region_mentions = sum(1 for c in filtered_docs if admin_region.lower() in c.page_content.lower()) if admin_region else len(filtered_docs)
+            missing_info_logger.info(f"{region_mentions}/{len(filtered_docs)} chunks mention {admin_region} Region" if admin_region else f"Retrieved {len(filtered_docs)} chunks")
+
+            if admin_region and region_mentions < len(filtered_docs) / 2:
+                missing_info_logger.warning(f"Less than half of chunks mention {admin_region} - retrieval may be poor")
+
             # Limit to top chunks and build context
             filtered_docs = filtered_docs[:MAX_CONTEXT_CHUNKS]
             context = "\n\n".join([doc.page_content for doc in filtered_docs])
@@ -664,23 +691,51 @@ class FEWSSystem:
                 "ipc_phase": assessment.current_phase
             }
         
-        # Detect validated shocks BEFORE prompting LLM (zone-specific detection)
-        livelihood_zone_for_detection = livelihood_info.livelihood_system if livelihood_info else "unknown"
-        validated_shock_types, validated_drivers, shock_details = self._detect_validated_shocks(
-            context, region, assessment, livelihood_zone_for_detection
-        )
-
-        # Validate shocks by geography (remove shocks about wrong regions)
+        # Extract detailed shocks with evidence using regex patterns
         admin_region = assessment.region or ""
-        validated_shock_types, validated_drivers = self._validate_shocks_geography(
-            validated_shock_types, validated_drivers, shock_details, region, admin_region
+        livelihood_zone_for_detection = livelihood_info.livelihood_system if livelihood_info else "unknown"
+        
+        detailed_shocks = self.domain_knowledge.extract_detailed_shocks(
+            context,
+            livelihood_zone_for_detection,
+            admin_region
         )
-
+        
+        # Log detected shocks for debugging
+        missing_info_logger.info(f"Detected {len(detailed_shocks)} shocks for {region}")
+        for shock in detailed_shocks:
+            missing_info_logger.info(f"  - {shock['type']}: {shock['description'][:50]}...")
+        
+        # Extract shock types and drivers from detailed shocks
+        validated_shock_types = [s['type'] for s in detailed_shocks if s['type'] != 'insufficient_data' and s['type'] != 'data_gap']
+        validated_drivers = self._extract_drivers_from_shocks(detailed_shocks)
+        
         if not validated_shock_types:
             missing_info_logger.info(
                 f"Region: {region} | IPC Phase: {assessment.current_phase} | "
-                f"Notice: No validated shocks detected via structured keyword matching (zone: {livelihood_zone_for_detection})."
+                f"Notice: No validated shocks detected via pattern matching (zone: {livelihood_zone_for_detection})."
             )
+        
+        # Format shocks with evidence for prompt
+        def format_shocks_with_evidence(shocks: List[Dict]) -> str:
+            """Format shocks with evidence for prompt"""
+            if not shocks or (shocks[0].get('type') in ['insufficient_data', 'data_gap']):
+                return "No specific shocks detected in retrieved context. Analysis will be limited."
+            
+            formatted = []
+            for shock in shocks:
+                if shock.get('type') in ['insufficient_data', 'data_gap']:
+                    continue
+                shock_text = f"- **{shock['type'].upper()}**: {shock['description']}"
+                if shock.get('evidence'):
+                    shock_text += f"\n  Evidence: \"{shock['evidence']}\""
+                if shock.get('confidence'):
+                    shock_text += f"\n  Confidence: {shock['confidence']}"
+                formatted.append(shock_text)
+            
+            return "\n\n".join(formatted) if formatted else "No specific shocks detected in retrieved context."
+        
+        shocks_formatted = format_shocks_with_evidence(detailed_shocks)
         
         # Build domain knowledge context for prompt (reference only)
         domain_context_parts: List[str] = []
@@ -695,10 +750,6 @@ class FEWSSystem:
                     rainfall_detail += f" | Secondary: {rainfall_info.secondary_season}"
                 rainfall_detail += f". Months: {rainfall_info.season_months}. Notes: {rainfall_info.notes}"
                 domain_context_parts.append(f"RAINFALL DETAILS: {rainfall_detail}")
-        if validated_shock_types:
-                domain_context_parts.append(f"VALIDATED SHOCK LABELS: {', '.join(validated_shock_types)}")
-        if validated_drivers:
-                domain_context_parts.append(f"VALIDATED DRIVER LABELS: {', '.join(validated_drivers)}")
         domain_context = "\n".join(domain_context_parts)
         
         # Use LLM to extract drivers with strict IPC-aligned prompt
@@ -707,7 +758,7 @@ class FEWSSystem:
                     "region",
                     "ipc_phase",
                     "context",
-                    "validated_shocks",
+                    "shocks_formatted",
                     "livelihood_system",
                     "rainfall_season",
                     "admin_region",
@@ -743,10 +794,15 @@ IMPORTANT — AUTHORITATIVE DOMAIN KNOWLEDGE VALUES:
 You are ALWAYS given the following fields directly from structured domain knowledge:
 - LIVELIHOOD SYSTEM: {livelihood_system}
 - RAINFALL SEASON: {rainfall_season}
-- VALIDATED SHOCKS: {validated_shocks}
 
-These values are ALWAYS correct and MUST NOT be contradicted, replaced, ignored, or described as "unknown," "not mentioned," "unclear," or "not provided."  
-These values DO NOT come from reports — they come from authoritative domain knowledge.
+VALIDATED SHOCKS (extracted from situation reports with evidence):
+{shocks_formatted}
+
+INSTRUCTIONS FOR SHOCKS:
+- Use ONLY the shocks listed above with their evidence
+- Quote the evidence provided when describing impacts
+- Do NOT invent or assume other shocks beyond those listed
+- If shocks list says "insufficient_data" or "No specific shocks detected", acknowledge this limitation clearly
 
 LIMITATION RULE:
 In the Limitations section, you may ONLY state a limitation if the input value is literally NULL or empty (i.e., "None").  
@@ -773,8 +829,9 @@ CRITICAL SEASONAL GUARDS:
 - Focus on crop production, harvest timing, and food stock depletion - NOT livestock/milk/pasture impacts.
 
 D. Shocks  
-List ONLY the validated shocks: {validated_shocks}.  
-Do NOT infer or hallucinate shocks not included in the list.
+List each validated shock from the list above with its description and evidence.  
+Quote the evidence when describing the shock.  
+Do NOT infer or hallucinate shocks not included in the list above.
 
 E. Livelihood Impacts
 For each validated shock, explain impacts on:
@@ -816,10 +873,6 @@ Produce a structured, contradiction-free explanation.
         )
         
         chain = prompt | self.llm
-        if validated_shock_types:
-                validated_shocks_str = ", ".join(validated_shock_types)
-        else:
-                validated_shocks_str = "None detected via structured keyword matching"
         
         # Get rainfall clarification
         rainfall_clarification = ""
@@ -834,7 +887,7 @@ Produce a structured, contradiction-free explanation.
         explanation = chain.invoke({
                 "region": region,
                 "ipc_phase": assessment.current_phase,
-                "validated_shocks": validated_shocks_str,
+                "shocks_formatted": shocks_formatted,
                 "context": context,
                 "livelihood_system": livelihood_system_for_prompt,
                 "rainfall_season": rainfall_season_for_prompt,
@@ -868,7 +921,8 @@ Produce a structured, contradiction-free explanation.
             "sources": list(set(sources)),
             "data_quality": data_quality,
             "ipc_phase": assessment.current_phase,
-            "retrieved_chunks": len(docs)
+            "retrieved_chunks": len(docs),
+            "shocks_detailed": detailed_shocks
         }
 
     def _filter_chunks_by_geography(
@@ -988,6 +1042,40 @@ Produce a structured, contradiction-free explanation.
             filtered_docs = docs[:3]
 
         return filtered_docs
+
+    def _extract_drivers_from_shocks(self, shocks: List[Dict]) -> List[str]:
+        """
+        Extract driver categories from detected shocks.
+        
+        Args:
+            shocks: List of shock dictionaries with 'type' field
+        
+        Returns:
+            List of driver category names
+        """
+        driver_mapping = {
+            'weather': 'Weather/Climate',
+            'conflict': 'Conflict and insecurity',
+            'economic': 'Economic shocks',
+            'displacement': 'Displacement',
+            'market_access': 'Market disruption',
+            'insufficient_data': 'Data gaps',
+            'data_gap': 'Data gaps'
+        }
+        
+        drivers = []
+        seen = set()
+        
+        for shock in shocks:
+            shock_type = shock.get('type', 'unknown')
+            driver = driver_mapping.get(shock_type, shock_type.title())
+            
+            # Avoid duplicates
+            if driver not in seen:
+                drivers.append(driver)
+                seen.add(driver)
+        
+        return drivers if drivers else ['Insufficient data']
 
     def _validate_shocks_geography(
         self,

@@ -4,6 +4,7 @@ Provides structured lookups for livelihoods, rainfall seasons, shocks, and inter
 """
 import json
 import pandas as pd
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
@@ -564,4 +565,153 @@ class DomainKnowledge:
             shock_type: shock_data.get('keywords', [])
             for shock_type, shock_data in self.shock_ontology.items()
         }
+
+    def extract_detailed_shocks(
+        self,
+        text: str,
+        livelihood_zone: str,
+        admin_region: str
+    ) -> List[Dict]:
+        """
+        Extract specific shocks with evidence using regex patterns.
+        
+        Args:
+            text: Retrieved context from FEWS NET reports
+            livelihood_zone: e.g., "highland_cropping", "pastoral", "rainfed_cropping"
+            admin_region: e.g., "Tigray", "Somali"
+        
+        Returns:
+            List of dicts with shock type, description, evidence, confidence
+        """
+        shocks = []
+        text_lower = text.lower()
+        region_lower = admin_region.lower() if admin_region else ""
+        
+        # Only analyze if text mentions this region or Ethiopia
+        if region_lower and region_lower not in text_lower and "ethiopia" not in text_lower:
+            return [{
+                'type': 'data_gap',
+                'description': f'Retrieved context does not specifically mention {admin_region} Region',
+                'evidence': 'No regional match in retrieved text',
+                'confidence': 'low'
+            }]
+        
+        # Split text into sentences for evidence extraction
+        sentences = re.split(r'[.!?]+', text)
+        
+        # Normalize livelihood zone
+        livelihood_normalized = livelihood_zone.lower()
+        is_highland_cropping = any(term in livelihood_normalized for term in ['highland', 'rainfed', 'cropping'])
+        is_pastoral = 'pastoral' in livelihood_normalized
+        
+        # Define zone-specific patterns
+        if is_highland_cropping:
+            weather_patterns = [
+                (r'delayed.*kiremt.*rain', 'Delayed kiremt rains'),
+                (r'late onset.*kiremt', 'Late onset of kiremt season'),
+                (r'dry spell.*tigray|dry spell.*amhara|dry spell.*northern', 'Dry spells during growing season'),
+                (r'moisture deficit', 'Moisture deficits'),
+                (r'below-average.*meher.*production|below.*average.*meher', 'Below-average meher production'),
+                (r'sorghum.*delayed|delayed.*sorghum', 'Delayed sorghum development'),
+                (r'late.*planting|planting.*delayed', 'Late planting due to delayed rains'),
+            ]
+            
+            conflict_patterns = [
+                (r'2020-2022.*conflict|conflict.*2020-2022|conflict.*2020.*2022', 'Conflict legacy (2020-2022)'),
+                (r'labor migration.*constrain|labor migration.*decline|constrain.*labor migration', 'Constrained labor migration'),
+                (r'road.*block|blocked.*road|road.*closure', 'Road blockages'),
+                (r'fuel shortage.*tigray|fuel shortage.*amhara|fuel.*shortage.*northern', 'Fuel shortages'),
+                (r'pretoria agreement|post-conflict', 'Post-conflict recovery challenges'),
+            ]
+            
+        elif is_pastoral:
+            weather_patterns = [
+                (r'deyr.*below.*average|deyr.*fail|failed.*deyr', 'Below-average/failed deyr season'),
+                (r'gu.*below.*average|gu.*fail|failed.*gu|genna.*fail', 'Below-average/failed gu/genna season'),
+                (r'poor pasture|pasture.*degrad|pasture.*condition', 'Poor pasture conditions'),
+                (r'drought.*pastoral|drought.*somali|drought.*borena', 'Drought in pastoral areas'),
+            ]
+            
+            conflict_patterns = [
+                (r'intercommunal.*conflict', 'Intercommunal conflict'),
+                (r'displacement.*pastoral|pastoral.*displacement', 'Conflict-driven displacement'),
+            ]
+        else:
+            # Default patterns for unknown zones
+            weather_patterns = [
+                (r'delayed.*rain|late.*rain', 'Delayed/late rainfall'),
+                (r'dry spell|drought', 'Dry conditions'),
+            ]
+            conflict_patterns = [
+                (r'conflict|insecurity', 'Conflict and insecurity'),
+            ]
+        
+        # Economic patterns (common to all zones)
+        economic_patterns = [
+            (r'high.*food price|food price.*increas|price.*increas.*food', 'High food prices'),
+            (r'inflation|currency.*depreciat', 'Inflation/currency depreciation'),
+            (r'purchasing power.*below|purchasing power.*declin|below.*purchasing power', 'Below-average purchasing power'),
+            (r'wage.*not.*kept.*pace|income.*below|wage.*below', 'Wages not keeping pace with inflation'),
+        ]
+        
+        # Extract weather shocks
+        for pattern, description in weather_patterns:
+            matches = [s for s in sentences if re.search(pattern, s.lower())]
+            if matches:
+                # Get the most relevant sentence (prefer one mentioning the region)
+                evidence_sentences = [s for s in matches if region_lower in s.lower()] if region_lower else matches
+                evidence = (evidence_sentences[0] if evidence_sentences else matches[0]).strip()[:250]
+                shocks.append({
+                    'type': 'weather',
+                    'description': description,
+                    'evidence': evidence,
+                    'confidence': 'high' if region_lower and region_lower in evidence.lower() else 'medium'
+                })
+        
+        # Extract conflict shocks
+        for pattern, description in conflict_patterns:
+            matches = [s for s in sentences if re.search(pattern, s.lower())]
+            if matches:
+                evidence_sentences = [s for s in matches if region_lower in s.lower()] if region_lower else matches
+                evidence = (evidence_sentences[0] if evidence_sentences else matches[0]).strip()[:250]
+                shocks.append({
+                    'type': 'conflict',
+                    'description': description,
+                    'evidence': evidence,
+                    'confidence': 'high' if region_lower and region_lower in evidence.lower() else 'medium'
+                })
+        
+        # Extract economic shocks
+        for pattern, description in economic_patterns:
+            matches = [s for s in sentences if re.search(pattern, s.lower())]
+            if matches:
+                evidence_sentences = [s for s in matches if region_lower in s.lower()] if region_lower else matches
+                evidence = (evidence_sentences[0] if evidence_sentences else matches[0]).strip()[:250]
+                shocks.append({
+                    'type': 'economic',
+                    'description': description,
+                    'evidence': evidence,
+                    'confidence': 'medium'
+                })
+        
+        # Deduplicate shocks by description
+        seen_descriptions = set()
+        unique_shocks = []
+        for shock in shocks:
+            desc_key = shock['description'].lower()
+            if desc_key not in seen_descriptions:
+                seen_descriptions.add(desc_key)
+                unique_shocks.append(shock)
+        
+        # If no shocks found, return data gap indicator
+        if not unique_shocks:
+            unique_shocks.append({
+                'type': 'insufficient_data',
+                'description': 'No specific shocks detected in retrieved context',
+                'evidence': 'Pattern matching found no relevant shocks',
+                'confidence': 'low',
+                'note': f'Consider adding more {admin_region}-specific content to situation reports' if admin_region else 'Consider adding more region-specific content to situation reports'
+            })
+        
+        return unique_shocks
 
