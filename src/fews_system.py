@@ -21,16 +21,29 @@ from .ipc_parser import IPCParser, RegionRiskAssessment
 from .document_processor import DocumentProcessor
 from .domain_knowledge import DomainKnowledge
 from .fews_knowledge_library import (
-    get_seasonal_calendar, get_livelihood_impacts, get_ipc_phase_definition,
-    get_driver_metadata, DRIVER_SHOCK_MAPPING
+    get_seasonal_calendar,
+    get_livelihood_impacts,
+    get_ipc_phase_definition,
+    get_driver_metadata,
+    DRIVER_SHOCK_MAPPING,
 )
 from .config import (
-    MIN_RELEVANT_CHUNKS, MAX_CONTEXT_CHUNKS, CHUNK_SIZE,
-    SHOCK_CONFIDENCE_THRESHOLD, MAX_SHOCKS_TO_RETURN
+    MIN_RELEVANT_CHUNKS,
+    MAX_CONTEXT_CHUNKS,
+    CHUNK_SIZE,
+    SHOCK_CONFIDENCE_THRESHOLD,
+    MAX_SHOCKS_TO_RETURN,
 )
 from .exceptions import (
-    InsufficientDataError, VectorStoreError, RetrievalError,
-    DomainKnowledgeError
+    InsufficientDataError,
+    VectorStoreError,
+    RetrievalError,
+    DomainKnowledgeError,
+)
+from .human_review import (
+    enqueue_explanation_for_review,
+    find_approved_explanation,
+    should_enqueue_for_review,
 )
 
 
@@ -467,8 +480,38 @@ class FEWSSystem:
                     "drivers": [],
                     "sources": [],
                     "data_quality": "not_found",
-                    "ipc_phase": None
+                    "ipc_phase": None,
                 }
+
+        # Check for a human-reviewed explanation for this region and IPC phase.
+        try:
+            approved = find_approved_explanation(
+                region=assessment.region or region,
+                ipc_phase=assessment.current_phase,
+            )
+        except Exception as exc:
+            approved = None
+            missing_info_logger.warning(
+                f"Human review lookup failed for region {region}: {exc}"
+            )
+
+        if approved:
+            missing_info_logger.info(
+                f"Using human-reviewed explanation for {region} "
+                f"(IPC Phase {assessment.current_phase})"
+            )
+            return {
+                "region": region,
+                "explanation": approved.explanation_human
+                if approved.explanation_human
+                else "",
+                "drivers": approved.drivers_human or [],
+                "sources": approved.sources_human or [],
+                "data_quality": "human_validated",
+                "ipc_phase": assessment.current_phase,
+                "retrieved_chunks": 0,
+                "shocks_detailed": approved.shocks_human or [],
+            }
         
         # Get structured domain knowledge
         geographic_parts = [part.strip() for part in assessment.geographic_full_name.split(',') if part.strip()]
@@ -935,7 +978,25 @@ Produce a structured, contradiction-free explanation.
                 f"Issue: Insufficient information in situation reports"
             )
 
-        sources = [doc.metadata.get('source', 'Unknown') for doc in docs]
+        sources = [doc.metadata.get("source", "Unknown") for doc in docs]
+
+        # Optionally enqueue low-confidence explanations for human review
+        try:
+            if should_enqueue_for_review(data_quality, detailed_shocks):
+                enqueue_explanation_for_review(
+                    region=assessment.region or region,
+                    ipc_phase=assessment.current_phase,
+                    geographic_full_name=assessment.geographic_full_name,
+                    data_quality=data_quality,
+                    shocks_model=detailed_shocks,
+                    drivers_model=drivers,
+                    explanation_model=explanation,
+                    sources_model=list(set(sources)),
+                )
+        except Exception as exc:
+            missing_info_logger.warning(
+                f"Failed to enqueue human review item for region {region}: {exc}"
+            )
 
         return {
             "region": region,
@@ -945,7 +1006,7 @@ Produce a structured, contradiction-free explanation.
             "data_quality": data_quality,
             "ipc_phase": assessment.current_phase,
             "retrieved_chunks": len(docs),
-            "shocks_detailed": detailed_shocks
+            "shocks_detailed": detailed_shocks,
         }
 
     def _filter_chunks_by_geography(

@@ -37,3 +37,6 @@ DEFAULT_MODEL_NAME = "llama3.2"
 # Logging
 MISSING_INFO_LOG_FILE = "missing_info.log"
 
+# Human review files
+HUMAN_REVIEW_QUEUE_FILE = "human_review_queue.jsonl"
+HUMAN_REVIEW_APPROVED_FILE = "human_review_approved.jsonl"

@@ -32,3 +32,9 @@ class RetrievalError(FEWSException):
     """Document retrieval error."""
     pass
 
+
+class HumanReviewError(FEWSException):
+    """Human review queue or record error."""
+    pass
+
+

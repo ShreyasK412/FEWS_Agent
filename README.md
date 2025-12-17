@@ -24,6 +24,9 @@ ollama pull llama3.2
 
 # 3. Launch the CLI
 python3 fews_cli.py
+
+# 4. (Optional) Launch the Streamlit review + agent UI
+streamlit run review_app.py
 ```
 
 When prompted, choose an option (1–4) and enter a woreda name, e.g. `Edaga arbi`. Fuzzy matching handles typos like `Edaga arb`.
@@ -58,6 +61,88 @@ Vector stores for the PDFs are generated automatically on first run (can take 15
 - **Function 3**: maps validated drivers (economic, conflict, weather, displacement) into intervention packages from `driver_interventions.json`, referencing humanitarian standards.
 
 All outputs are logged; retrieval warnings and “insufficient data” cases are recorded for follow-up.
+
+---
+
+## Web UI (Streamlit) – Human Review + FEWS Agent
+
+In addition to the CLI, the project exposes a **Streamlit UI** that lets you:
+
+- **Review and correct low-confidence outputs** (human-in-the-loop).
+- **Approve human-reviewed explanations** that become ground truth for future runs.
+- **Interact with the FEWS agent** via a point-and-click interface that mirrors the CLI actions (identify at-risk regions, explain why, recommend interventions, or run a full analysis).
+
+### Launching the UI
+
+```bash
+# From the FEWS project root, in your virtualenv
+pip install -r requirements.txt
+streamlit run review_app.py
+```
+
+Then open the URL shown in the terminal (typically `http://localhost:8501`).
+
+### Tabs
+
+- **Human review**
+  - Reads `human_review_queue.jsonl` for **pending low-confidence explanations** automatically enqueued by `function2_explain_why` (e.g., insufficient data or only low-confidence shocks).
+  - Lets an analyst:
+    - Inspect model-detected shocks (type, description, evidence, confidence),
+    - Inspect drivers and sources,
+    - Edit shocks as JSON, edit drivers (comma-separated), and edit the explanation text,
+    - Save a **human-approved record** to `human_review_approved.jsonl`.
+  - On subsequent runs, `FEWSSystem.function2_explain_why` checks `human_review_approved.jsonl` via `find_approved_explanation` and, if a match exists for `(region, IPC phase)`, **returns the human-reviewed explanation/drivers/shocks instead of re-running RAG + LLM**, with `data_quality="human_validated"`.
+
+- **Chat with FEWS agent**
+  - A **CLI-style agent UI** that mirrors the CLI menu:
+    - `1 - Identify at-risk regions`
+    - `2 - Explain why a region is at risk`
+    - `3 - Recommend interventions for a region`
+    - `4 - Full analysis (risk + why + interventions)`
+  - Workflow:
+    1. Click **Initialize FEWS system** to construct `FEWSSystem()` (loads IPC parser, domain knowledge, and LLM/embeddings).
+    2. Click **Setup vector stores** to build/load the Chroma stores for situation reports and intervention literature.
+    3. Choose an action (1–4).
+    4. For actions 2–4, pick a **region from a dropdown** populated from IPC data (`IPCParser.identify_at_risk_regions(min_phase=1, ...)`).
+    5. Click **Run action** to execute the corresponding FEWS functions and display:
+       - At-risk region tables (for action 1),
+       - Full explanations with IPC phase, data_quality, drivers, and sources (action 2),
+       - Intervention recommendations (action 3),
+       - Combined risk assessment + explanation + interventions (action 4).
+
+The web UI and CLI share the same core logic in `src/fews_system.py`, `src/ipc_parser.py`, and `src/domain_knowledge.py`, so behavior is consistent regardless of interface.
+
+---
+
+## Human-in-the-Loop Review Design
+
+Low-confidence explanations from `function2_explain_why` are **automatically queued** for human review:
+
+- The logic in `src/human_review.py` uses:
+  - `should_enqueue_for_review(data_quality, shocks)` to decide when to enqueue.
+  - `enqueue_explanation_for_review(...)` to append items to `human_review_queue.jsonl`.
+
+Each queue item contains:
+
+- `region`, `ipc_phase`, `geographic_full_name`
+- `data_quality`
+- `shocks_model` (list of shock dicts with type/description/evidence/confidence)
+- `drivers_model`
+- `explanation_model` (LLM text)
+- `sources_model`
+- `status="pending"`, `created_at`.
+
+When an analyst approves an item in the Streamlit UI:
+
+- A **human-reviewed record** is written to `human_review_approved.jsonl` with:
+  - `shocks_human`, `drivers_human`, `explanation_human`, `sources_human`
+  - `reviewed_by`, `reviewed_at`.
+
+On subsequent runs:
+
+- `FEWSSystem.function2_explain_why` calls `find_approved_explanation(region, ipc_phase)`:
+  - If found, it **skips retrieval/shock detection/LLM and returns the human-approved explanation**, shocks, and drivers as the authoritative ground truth.
+  - Otherwise, it runs the normal RAG + domain-knowledge pipeline and may enqueue a new item if confidence is low.
 
 ---
 
