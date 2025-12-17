@@ -197,12 +197,3 @@ Temporary artefacts (`__pycache__/`, `chroma_db_*`, `missing_info.log`) are gene
 
 Contributions are welcome—please open an issue describing the improvement or bug fix you have in mind.
 
----
-
-## License & Contact
-
-Copyright © 2025.
-
-Released under the MIT License—see `LICENSE` (add if required).
-
-Questions or support: add your preferred contact information here.
